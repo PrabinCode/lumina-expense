@@ -49,6 +49,7 @@ app.*.map.json
 .gemini/
 .cursorrules
 .copilot/
+ROADMAP.md
 scratch/
 *.local.md
 *.local.json
