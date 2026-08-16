@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../health/presentation/widgets/health_score_card.dart';
 import '../widgets/dashboard_goals_card.dart';
 import '../widgets/dashboard_subscriptions_card.dart';
 import '../widgets/quick_actions_bar.dart';
@@ -30,6 +31,8 @@ class DashboardScreen extends ConsumerWidget {
             TotalBalanceCard(),
             SizedBox(height: 16),
             QuickActionsBar(),
+            SizedBox(height: 16),
+            HealthScoreCard(),
             SizedBox(height: 16),
             DashboardGoalsCard(),
             DashboardSubscriptionsCard(),
