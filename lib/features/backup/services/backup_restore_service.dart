@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
@@ -23,6 +24,7 @@ class BackupPreview {
   final int budgetCount;
   final int debtCount;
   final int goalCount;
+  final int subscriptionCount;
 
   BackupPreview({
     required this.version,
@@ -34,16 +36,171 @@ class BackupPreview {
     required this.budgetCount,
     required this.debtCount,
     this.goalCount = 0,
+    this.subscriptionCount = 0,
   });
 }
 
+class BackupFileInfo {
+  final String path;
+  final String fileName;
+  final int sizeBytes;
+  final DateTime modifiedAt;
+
+  BackupFileInfo({
+    required this.path,
+    required this.fileName,
+    required this.sizeBytes,
+    required this.modifiedAt,
+  });
+
+  String get formattedSize {
+    if (sizeBytes < 1024) return '$sizeBytes B';
+    if (sizeBytes < 1024 * 1024) return '${(sizeBytes / 1024).toStringAsFixed(1)} KB';
+    return '${(sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  String get formattedDate {
+    return DateFormat('MMM d, yyyy • hh:mm a').format(modifiedAt);
+  }
+}
+
 class BackupRestoreService {
+  static const _keyBackupDir = 'backup_storage_location';
+  static const _keyAutoFrequency = 'backup_auto_frequency';
+  static const _keyMaxFiles = 'backup_max_files';
+
   final AppDatabase _db;
 
   BackupRestoreService(this._db);
 
-  /// 1. Export entire database to JSON and trigger Native Share Sheet (Google Drive, Files, etc.)
-  Future<String> exportBackupJson() async {
+  /// Get the user-configured backup storage directory (or standard default)
+  Future<String> getBackupStorageDirectory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final customPath = prefs.getString(_keyBackupDir);
+
+    if (customPath != null && customPath.trim().isNotEmpty) {
+      final dir = Directory(customPath.trim());
+      if (await dir.exists()) {
+        return dir.path;
+      }
+    }
+
+    // Default to /storage/emulated/0/Download/LuminaBackups on Android
+    Directory defaultDir;
+    if (Platform.isAndroid) {
+      final downloadDir = Directory('/storage/emulated/0/Download/LuminaBackups');
+      defaultDir = downloadDir;
+    } else {
+      Directory? base;
+      try {
+        base = await getDownloadsDirectory();
+      } catch (_) {}
+      try {
+        base ??= await getApplicationDocumentsDirectory();
+      } catch (_) {}
+      base ??= Directory.systemTemp;
+      defaultDir = Directory('${base.path}/LuminaBackups');
+    }
+
+    if (!await defaultDir.exists()) {
+      try {
+        await defaultDir.create(recursive: true);
+      } catch (_) {
+        // Fallback to documents directory if permissions fail
+        final fallback = await getApplicationDocumentsDirectory();
+        return fallback.path;
+      }
+    }
+
+    return defaultDir.path;
+  }
+
+  /// Save new backup storage location
+  Future<void> setBackupStorageDirectory(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyBackupDir, path);
+    final dir = Directory(path);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+  }
+
+  /// Launch system folder picker to select storage location (like Mihon)
+  Future<String?> pickAndSetStorageDirectory() async {
+    final selected = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Select Backup Storage Location',
+    );
+    if (selected != null && selected.trim().isNotEmpty) {
+      await setBackupStorageDirectory(selected.trim());
+      return selected.trim();
+    }
+    return null;
+  }
+
+  /// List all local backup files in the configured storage directory
+  Future<List<BackupFileInfo>> listLocalBackups() async {
+    final dirPath = await getBackupStorageDirectory();
+    final dir = Directory(dirPath);
+    if (!await dir.exists()) {
+      return [];
+    }
+
+    final entities = await dir.list().toList();
+    final backups = <BackupFileInfo>[];
+
+    for (final entity in entities) {
+      if (entity is File && entity.path.endsWith('.json')) {
+        final stat = await entity.stat();
+        final name = entity.uri.pathSegments.isNotEmpty
+            ? entity.uri.pathSegments.last
+            : entity.path.split(Platform.pathSeparator).last;
+
+        backups.add(BackupFileInfo(
+          path: entity.path,
+          fileName: name,
+          sizeBytes: stat.size,
+          modifiedAt: stat.modified,
+        ));
+      }
+    }
+
+    // Sort newest first
+    backups.sort((a, b) => b.modifiedAt.compareTo(a.modifiedAt));
+    return backups;
+  }
+
+  /// Delete a backup file
+  Future<void> deleteBackup(String filePath) async {
+    final file = File(filePath);
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
+
+  /// Auto-backup frequency setting (off, daily, weekly)
+  Future<String> getAutoBackupFrequency() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyAutoFrequency) ?? 'off';
+  }
+
+  Future<void> setAutoBackupFrequency(String frequency) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyAutoFrequency, frequency);
+  }
+
+  /// Max backup files retention count
+  Future<int> getMaxBackupFiles() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyMaxFiles) ?? 5;
+  }
+
+  Future<void> setMaxBackupFiles(int count) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyMaxFiles, count);
+  }
+
+  /// Generate Backup JSON payload
+  Future<Map<String, dynamic>> _buildBackupPayload() async {
     final accounts = await _db.select(_db.accounts).get();
     final categories = await _db.select(_db.categories).get();
     final transactions = await _db.select(_db.transactions).get();
@@ -53,7 +210,7 @@ class BackupRestoreService {
     final splits = await _db.select(_db.transactionSplits).get();
     final subscriptions = await _db.select(_db.recurringTransactions).get();
 
-    final backupPayload = {
+    return {
       'version': 4,
       'appName': 'LuminaExpense',
       'exportDate': DateTime.now().toIso8601String(),
@@ -163,8 +320,42 @@ class BackupRestoreService {
             .toList(),
       }
     };
+  }
 
-    final jsonString = const JsonEncoder.withIndent('  ').convert(backupPayload);
+  /// Create backup in configured storage location and auto-prune oldest
+  Future<String> createBackup({String? targetDir}) async {
+    final payload = await _buildBackupPayload();
+    final jsonString = const JsonEncoder.withIndent('  ').convert(payload);
+
+    final dirPath = targetDir ?? await getBackupStorageDirectory();
+    final dir = Directory(dirPath);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final filePath = '${dir.path}/lumina_backup_$timestamp.json';
+
+    final file = File(filePath);
+    await file.writeAsString(jsonString);
+
+    // Auto-prune old backups if limit is reached
+    final maxFiles = await getMaxBackupFiles();
+    final existing = await listLocalBackups();
+    if (existing.length > maxFiles) {
+      for (int i = maxFiles; i < existing.length; i++) {
+        await deleteBackup(existing[i].path);
+      }
+    }
+
+    return filePath;
+  }
+
+  /// Export Backup to temporary location and trigger Native Share Sheet
+  Future<String> exportBackupJson() async {
+    final payload = await _buildBackupPayload();
+    final jsonString = const JsonEncoder.withIndent('  ').convert(payload);
+
     final tempDir = await getTemporaryDirectory();
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final filePath = '${tempDir.path}/lumina_backup_$timestamp.json';
@@ -172,86 +363,70 @@ class BackupRestoreService {
     final file = File(filePath);
     await file.writeAsString(jsonString);
 
-    // Share via native share sheet
     await Share.shareXFiles(
       [XFile(filePath)],
       subject: 'Lumina Expense Backup ($timestamp)',
-      text: 'Lumina Expense offline database backup file.',
+      text: 'Lumina Expense offline database backup snapshot.',
     );
 
     return filePath;
   }
 
-  /// Helper to get standard user-accessible Downloads or Documents directory
-  Future<Directory> getDefaultDownloadDirectory() async {
-    if (Platform.isAndroid) {
-      final downloadDir = Directory('/storage/emulated/0/Download');
-      if (await downloadDir.exists()) {
-        return downloadDir;
-      }
-      final documentsDir = Directory('/storage/emulated/0/Documents');
-      if (await documentsDir.exists()) {
-        return documentsDir;
-      }
-    }
-    return await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
-  }
+  /// Create CSV Export in configured directory
+  Future<String> createCsvExport({String? targetDir}) async {
+    final cat = _db.categories;
+    final srcAcc = _db.alias(_db.accounts, 'src');
+    final dstAcc = _db.alias(_db.accounts, 'dst');
 
-  /// Let user choose a custom destination directory using system file picker
-  Future<String?> pickTargetDirectory() async {
-    return await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Select Folder to Save File',
-    );
-  }
+    final rows = await (_db.select(_db.transactions).join([
+      leftOuterJoin(cat, cat.id.equalsExp(_db.transactions.categoryId)),
+      innerJoin(srcAcc, srcAcc.id.equalsExp(_db.transactions.accountId)),
+      leftOuterJoin(dstAcc, dstAcc.id.equalsExp(_db.transactions.toAccountId)),
+    ])
+          ..orderBy([OrderingTerm(expression: _db.transactions.date, mode: OrderingMode.desc)]))
+        .get();
 
-  /// 1b. Save Backup (JSON) directly to device Documents / Downloads or custom folder
-  Future<String> saveBackupToDeviceStorage({String? customFolderPath}) async {
-    final categories = await _db.select(_db.categories).get();
-    final accounts = await _db.select(_db.accounts).get();
-    final transactions = await _db.select(_db.transactions).get();
-    final budgets = await _db.select(_db.budgets).get();
-    final debts = await _db.select(_db.debts).get();
-    final goals = await _db.select(_db.goals).get();
-    final subscriptions = await _db.select(_db.recurringTransactions).get();
-    final splits = await _db.select(_db.transactionSplits).get();
+    final List<List<dynamic>> csvData = [
+      ['Date', 'Time', 'Title', 'Type', 'Category', 'Account', 'Transfer To', 'Amount', 'Currency', 'Notes', 'Tags']
+    ];
 
-    final backupPayload = {
-      'version': 4,
-      'appName': 'LuminaExpense',
-      'exportDate': DateTime.now().toIso8601String(),
-      'data': {
-        'categories': categories.map((c) => {'id': c.id, 'name': c.name, 'type': c.type, 'icon': c.icon, 'color': c.color, 'isDefault': c.isDefault}).toList(),
-        'accounts': accounts.map((a) => {'id': a.id, 'name': a.name, 'type': a.type, 'initialBalance': a.initialBalance, 'currency': a.currency, 'icon': a.icon, 'color': a.color, 'isArchived': a.isArchived, 'createdAt': a.createdAt.toIso8601String()}).toList(),
-        'transactions': transactions.map((t) => {'id': t.id, 'title': t.title, 'amount': t.amount, 'type': t.type, 'categoryId': t.categoryId, 'accountId': t.accountId, 'toAccountId': t.toAccountId, 'date': t.date.toIso8601String(), 'note': t.note, 'tags': t.tags, 'receiptPath': t.receiptPath, 'isSplit': t.isSplit, 'createdAt': t.createdAt.toIso8601String()}).toList(),
-        'transactionSplits': splits.map((s) => {'id': s.id, 'transactionId': s.transactionId, 'categoryId': s.categoryId, 'amount': s.amount, 'note': s.note}).toList(),
-        'budgets': budgets.map((b) => {'id': b.id, 'categoryId': b.categoryId, 'amountLimit': b.amountLimit, 'period': b.period, 'startDate': b.startDate.toIso8601String()}).toList(),
-        'debts': debts.map((d) => {'id': d.id, 'personName': d.personName, 'amount': d.amount, 'settledAmount': d.settledAmount, 'type': d.type, 'accountId': d.accountId, 'dueDate': d.dueDate?.toIso8601String(), 'isSettled': d.isSettled, 'notes': d.notes, 'createdAt': d.createdAt.toIso8601String()}).toList(),
-        'goals': goals.map((g) => {'id': g.id, 'name': g.name, 'targetAmount': g.targetAmount, 'currentAmount': g.currentAmount, 'targetDate': g.targetDate?.toIso8601String(), 'iconName': g.iconName, 'colorValue': g.colorValue, 'notes': g.notes, 'isCompleted': g.isCompleted, 'createdAt': g.createdAt.toIso8601String()}).toList(),
-        'recurringTransactions': subscriptions.map((s) => {'id': s.id, 'title': s.title, 'amount': s.amount, 'categoryId': s.categoryId, 'accountId': s.accountId, 'frequency': s.frequency, 'interval': s.interval, 'nextDueDate': s.nextDueDate.toIso8601String(), 'autoLog': s.autoLog, 'isActive': s.isActive, 'notes': s.notes, 'createdAt': s.createdAt.toIso8601String()}).toList(),
-      }
-    };
+    for (final row in rows) {
+      final t = row.readTable(_db.transactions);
+      final c = row.readTableOrNull(cat);
+      final src = row.readTable(srcAcc);
+      final dst = row.readTableOrNull(dstAcc);
 
-    final jsonString = const JsonEncoder.withIndent('  ').convert(backupPayload);
-    Directory targetDir;
-    if (customFolderPath != null && customFolderPath.trim().isNotEmpty) {
-      targetDir = Directory(customFolderPath.trim());
-    } else {
-      targetDir = await getDefaultDownloadDirectory();
+      csvData.add([
+        DateFormat('yyyy-MM-dd').format(t.date),
+        DateFormat('HH:mm:ss').format(t.date),
+        t.title,
+        t.type.toUpperCase(),
+        c?.name ?? (t.type == 'transfer' ? 'Transfer' : 'Uncategorized'),
+        src.name,
+        dst?.name ?? '',
+        t.amount,
+        src.currency,
+        t.note ?? '',
+        t.tags ?? '',
+      ]);
     }
 
-    if (!await targetDir.exists()) {
-      await targetDir.create(recursive: true);
+    final csvString = const ListToCsvConverter().convert(csvData);
+    final dirPath = targetDir ?? await getBackupStorageDirectory();
+    final dir = Directory(dirPath);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
     }
 
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final filePath = '${targetDir.path}/lumina_backup_$timestamp.json';
+    final filePath = '${dir.path}/transactions_$timestamp.csv';
 
     final file = File(filePath);
-    await file.writeAsString(jsonString);
+    await file.writeAsString(csvString);
     return filePath;
   }
 
-  /// 2. Export Transactions to CSV (Excel / Sheets compatible)
+  /// Share CSV Export via apps
   Future<String> exportTransactionsCsv() async {
     final cat = _db.categories;
     final srcAcc = _db.alias(_db.accounts, 'src');
@@ -307,66 +482,33 @@ class BackupRestoreService {
     return filePath;
   }
 
-  /// 2b. Save Transactions CSV directly to device storage or custom folder
-  Future<String> saveCsvToDeviceStorage({String? customFolderPath}) async {
-    final cat = _db.categories;
-    final srcAcc = _db.alias(_db.accounts, 'src');
-    final dstAcc = _db.alias(_db.accounts, 'dst');
-
-    final rows = await (_db.select(_db.transactions).join([
-      leftOuterJoin(cat, cat.id.equalsExp(_db.transactions.categoryId)),
-      innerJoin(srcAcc, srcAcc.id.equalsExp(_db.transactions.accountId)),
-      leftOuterJoin(dstAcc, dstAcc.id.equalsExp(_db.transactions.toAccountId)),
-    ])
-          ..orderBy([OrderingTerm(expression: _db.transactions.date, mode: OrderingMode.desc)]))
-        .get();
-
-    final List<List<dynamic>> csvData = [
-      ['Date', 'Time', 'Title', 'Type', 'Category', 'Account', 'Transfer To', 'Amount', 'Currency', 'Notes', 'Tags']
-    ];
-
-    for (final row in rows) {
-      final t = row.readTable(_db.transactions);
-      final c = row.readTableOrNull(cat);
-      final src = row.readTable(srcAcc);
-      final dst = row.readTableOrNull(dstAcc);
-
-      csvData.add([
-        DateFormat('yyyy-MM-dd').format(t.date),
-        DateFormat('HH:mm:ss').format(t.date),
-        t.title,
-        t.type.toUpperCase(),
-        c?.name ?? (t.type == 'transfer' ? 'Transfer' : 'Uncategorized'),
-        src.name,
-        dst?.name ?? '',
-        t.amount,
-        src.currency,
-        t.note ?? '',
-        t.tags ?? '',
-      ]);
-    }
-
-    final csvString = const ListToCsvConverter().convert(csvData);
-    Directory targetDir;
-    if (customFolderPath != null && customFolderPath.trim().isNotEmpty) {
-      targetDir = Directory(customFolderPath.trim());
-    } else {
-      targetDir = await getDefaultDownloadDirectory();
-    }
-
-    if (!await targetDir.exists()) {
-      await targetDir.create(recursive: true);
-    }
-
-    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final filePath = '${targetDir.path}/transactions_$timestamp.csv';
-
+  /// Inspect a backup file by path
+  Future<BackupPreview> inspectBackupFile(String filePath) async {
     final file = File(filePath);
-    await file.writeAsString(csvString);
-    return filePath;
+    final content = await file.readAsString();
+    final Map<String, dynamic> json = jsonDecode(content);
+
+    if (!json.containsKey('data') || !json.containsKey('version')) {
+      throw const FormatException('Invalid backup file structure.');
+    }
+
+    final data = json['data'] as Map<String, dynamic>;
+
+    return BackupPreview(
+      version: json['version'] as int? ?? 1,
+      appName: json['appName'] as String? ?? 'Unknown',
+      exportDate: DateTime.tryParse(json['exportDate'] as String? ?? '') ?? DateTime.now(),
+      accountCount: (data['accounts'] as List?)?.length ?? 0,
+      categoryCount: (data['categories'] as List?)?.length ?? 0,
+      transactionCount: (data['transactions'] as List?)?.length ?? 0,
+      budgetCount: (data['budgets'] as List?)?.length ?? 0,
+      debtCount: (data['debts'] as List?)?.length ?? 0,
+      goalCount: (data['goals'] as List?)?.length ?? 0,
+      subscriptionCount: (data['recurringTransactions'] as List?)?.length ?? 0,
+    );
   }
 
-  /// 3. Pick a backup file and inspect its contents
+  /// Pick a backup file from anywhere via file picker
   Future<({String filePath, BackupPreview preview})?> pickAndInspectBackup() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -378,32 +520,11 @@ class BackupRestoreService {
     }
 
     final path = result.files.single.path!;
-    final file = File(path);
-    final content = await file.readAsString();
-    final Map<String, dynamic> json = jsonDecode(content);
-
-    if (!json.containsKey('data') || !json.containsKey('version')) {
-      throw const FormatException('Invalid backup file structure.');
-    }
-
-    final data = json['data'] as Map<String, dynamic>;
-
-    final preview = BackupPreview(
-      version: json['version'] as int? ?? 1,
-      appName: json['appName'] as String? ?? 'Unknown',
-      exportDate: DateTime.tryParse(json['exportDate'] as String? ?? '') ?? DateTime.now(),
-      accountCount: (data['accounts'] as List?)?.length ?? 0,
-      categoryCount: (data['categories'] as List?)?.length ?? 0,
-      transactionCount: (data['transactions'] as List?)?.length ?? 0,
-      budgetCount: (data['budgets'] as List?)?.length ?? 0,
-      debtCount: (data['debts'] as List?)?.length ?? 0,
-      goalCount: (data['goals'] as List?)?.length ?? 0,
-    );
-
+    final preview = await inspectBackupFile(path);
     return (filePath: path, preview: preview);
   }
 
-  /// 4. Restore database from JSON backup file
+  /// Restore database from JSON backup file
   Future<void> restoreFromFile(String filePath) async {
     final file = File(filePath);
     final content = await file.readAsString();
@@ -566,17 +687,15 @@ class BackupRestoreService {
     });
   }
 
-  /// 5. Populate realistic Demo / Sample data for quick testing and open-source demonstration
+  /// Populate realistic Demo / Sample data
   Future<void> seedDemoData() async {
     const uuid = Uuid();
     final now = DateTime.now();
 
     await _db.transaction(() async {
-      // 1. Ensure Categories exist
       final existingCats = await _db.select(_db.categories).get();
       final catMap = {for (var c in existingCats) c.name: c.id};
 
-      // 2. Clear old transactions, splits, debts, goals, recurring
       await _db.delete(_db.recurringTransactions).go();
       await _db.delete(_db.transactionSplits).go();
       await _db.delete(_db.transactions).go();
@@ -584,7 +703,6 @@ class BackupRestoreService {
       await _db.delete(_db.budgets).go();
       await _db.delete(_db.goals).go();
 
-      // 3. Create Sample Budgets
       if (catMap.containsKey('Food & Dining')) {
         await _db.into(_db.budgets).insert(
               BudgetsCompanion.insert(
@@ -613,12 +731,9 @@ class BackupRestoreService {
             );
       }
 
-      // 4. Sample Transactions across the past 30 days
       final sampleTxs = [
-        // Salary
         (title: 'Monthly Salary', amount: 3500.0, type: 'income', cat: 'Salary', daysAgo: 25),
         (title: 'Freelance Design Project', amount: 850.0, type: 'income', cat: 'Freelance & Projects', daysAgo: 10),
-        // Expenses
         (title: 'Supermarket Weekly Groceries', amount: 112.50, type: 'expense', cat: 'Groceries', daysAgo: 1),
         (title: 'Coffee & Breakfast', amount: 8.50, type: 'expense', cat: 'Food & Dining', daysAgo: 1),
         (title: 'Dinner with Friends', amount: 48.00, type: 'expense', cat: 'Food & Dining', daysAgo: 2),
@@ -653,7 +768,7 @@ class BackupRestoreService {
             );
       }
 
-      // 4b. Sample Split Transaction (e.g. Costco Superstore Trip)
+      // Sample Split Transaction
       final splitTxId = uuid.v4();
       final groceriesCatId = catMap['Groceries'];
       final diningCatId = catMap['Food & Dining'];
@@ -694,7 +809,7 @@ class BackupRestoreService {
             );
       }
 
-      // 5. Sample Debts (IOUs)
+      // Sample Debts
       await _db.into(_db.debts).insert(
             DebtsCompanion.insert(
               id: uuid.v4(),
@@ -719,7 +834,7 @@ class BackupRestoreService {
             ),
           );
 
-      // 6. Sample Goals (Sinking Funds)
+      // Sample Goals
       await _db.into(_db.goals).insert(
             GoalsCompanion.insert(
               id: uuid.v4(),
@@ -744,7 +859,7 @@ class BackupRestoreService {
             ),
           );
 
-      // 7. Sample Recurring Subscriptions & Bills
+      // Sample Subscriptions
       final entertainmentCatId = catMap['Entertainment'];
       final billsCatId = catMap['Bills & Utilities'];
 
