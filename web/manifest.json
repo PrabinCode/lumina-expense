@@ -1,11 +1,11 @@
 {
-    "name": "lumina_expense",
-    "short_name": "lumina_expense",
+    "name": "Lumina Expense",
+    "short_name": "Lumina Expense",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "A 100% offline-first, privacy-focused personal finance and expense tracker.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

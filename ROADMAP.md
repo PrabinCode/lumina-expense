@@ -1,67 +1,93 @@
-# 🗺️ Lumina Expense — Post-v1 Strategic Roadmap
+# 🗺️ Lumina Expense — Comprehensive Post-v1 Strategic Roadmap
 
-This document outlines the planned feature additions and architectural expansions for **Lumina Expense** following the initial v1.0.0 release.
+This document outlines the planned feature additions, architectural expansions, and release milestones for **Lumina Expense** following the initial v1.0.0 release.
 
 ---
 
-## 📅 Roadmap Overview
+## 📅 Multi-Phase Release Overview
 
 ```mermaid
-graph LR
-    V1[v1.0.0 Core Engine] --> V11[v1.1 Automation & Capture]
-    V11 --> V12[v1.2 Insights & Organization]
-    V12 --> V20[v2.0 Private Cloud Sync & Security]
+graph TD
+    V10[v1.0.0: Core Offline Engine] --> V11[v1.1.0: Power-User & Automation Tools]
+    V11 --> V12[v1.2.0: Smart Capture & Visual Insights]
+    V12 --> V13[v1.3.0: Global & Travel Finance]
+    V13 --> V20[v2.0.0: Private Cloud Sync & Security]
 ```
 
 ---
 
-## 🚀 Phase 7: Version 1.1 — Smart Automation & Capturing
+## 🚀 Phase 1: Version 1.1.0 — Power-User Tools & Automation
 
-### 1. On-Device Receipt OCR Scanner
-* **Goal**: Take a photo or pick a receipt from gallery and auto-detect Amount, Store Name, and Date.
-* **Architecture**: Use `google_mlkit_text_recognition` for 100% on-device, private OCR (no external cloud API or data leakage).
-* **UI**: A camera scan icon inside `AddTransactionSheet` that extracts the highest price and merchant title into the input fields.
+### 1. 🎯 Savings Goals & Sinking Funds
+* **Goal**: Allow users to set milestone targets (e.g. *Emergency Fund*, *New Laptop*, *Vacation Fund*) with target dates and amounts.
+* **Architecture**: New `Goals` table in Drift with deposit/withdraw transfers linked to accounts.
+* **UI**: Progress cards, days remaining countdown, and required monthly contribution calculations.
 
-### 2. Bank SMS / Notification Auto-Logger (Android)
-* **Goal**: Detect transactional SMS from banks/wallets and pre-fill the transaction dialog.
-* **Architecture**: Local regex engine matching common transaction templates (`telephony` / notification listener).
-* **Privacy**: User customizable regex whitelist, zero transmission of SMS content outside the device.
+### 2. 🧾 Split Transactions
+* **Goal**: Allocate a single transaction across multiple categories (e.g. $100 supermarket bill = $70 *Groceries* + $30 *Household*).
+* **Architecture**: `TransactionSplits` table with cascading foreign keys to `Transactions` and `Categories`.
+* **UI**: Category split modal with remaining allocation validation; donut chart aggregation.
 
-### 3. Recurring Transaction Scheduler & Notification Alerts
-* **Goal**: Schedule recurring fixed bills (Rent, Netflix, Insurance) with local notifications before the due date.
-* **Architecture**: `flutter_local_notifications` + Drift background runner.
+### 3. 🔄 Subscriptions & Recurring Bill Scheduler
+* **Goal**: Track fixed recurring expenses (Rent, Netflix, Spotify, Gym) with upcoming billing alerts.
+* **Architecture**: `RecurringTransactions` table + `flutter_local_notifications` + app-start catch-up runner.
+* **UI**: Dedicated Subscriptions screen with monthly committed burn-rate tracker and due-date countdown chips.
 
----
+### 4. 🏷️ Tags & Multi-Labeling Engine
+* **Goal**: Flexible cross-cutting tags (e.g. `#Trip2026`, `#TaxDeductible`, `#WorkExpense`) orthogonal to primary categories.
+* **Architecture**: Many-to-many `Tags` and `TransactionTags` tables in Drift.
+* **UI**: Tag chip autocompletion and Tag-based analytical breakdowns.
 
-## 📊 Phase 8: Version 1.2 — Advanced Financial Insights & Multi-Currency
-
-### 1. Cash Flow Calendar & Heatmap View
-* **Goal**: Visual calendar showing daily spending intensity (color heatmap) and upcoming bill dots.
-* **UI**: Interactive calendar grid with day-tap inspection of daily transaction logs.
-
-### 2. Multi-Currency with Offline FX Rate Caching
-* **Goal**: Record expenses in different currencies (e.g. while traveling) with auto-conversion to base currency.
-* **Architecture**: Local cached currency table with periodic offline-friendly exchange rate updates.
-
-### 3. Split Transaction Wizard
-* **Goal**: Split a single grocery or mall receipt across multiple categories (e.g., $100 total = $70 *Groceries* + $30 *Personal Care*).
-* **Architecture**: Support 1-to-many transaction-category item allocations in Drift database.
-
-### 4. PDF Statement Generator
-* **Goal**: Export professionally formatted monthly PDF financial summaries for tax reporting or personal records.
-* **Architecture**: Use `pdf` and `printing` packages.
+### 5. 🔒 Biometric App Lock & Privacy Shield
+* **Goal**: Secure app data with Face ID / Fingerprint / PIN, and blur screen in OS task switcher.
+* **Architecture**: `local_auth` package + `AppLifecycleListener` privacy overlay.
 
 ---
 
-## 🔒 Phase 9: Version 2.0 — Private Cloud Sync & Advanced Security
+## 📸 Phase 2: Version 1.2.0 — Smart Capture & Visual Insights
 
-### 1. Encrypted WebDAV / Nextcloud / Syncthing Sync
-* **Goal**: Optional automatic syncing between devices using user's private self-hosted WebDAV or Nextcloud server.
-* **Architecture**: CRDT / Delta-sync engine over SQLite.
+### 1. 📸 100% On-Device Receipt OCR Scanner
+* **Goal**: Auto-extract total amount, date, and merchant from receipt photos with zero cloud data transmission.
+* **Architecture**: `google_mlkit_text_recognition` + local regex price/merchant heuristic parser.
+* **UI**: Instant camera scan button in transaction sheet.
 
-### 2. AES-256 Encrypted Backups
-* **Goal**: Optional password/passphrase encryption for exported `.json` backups.
-* **Architecture**: `cryptography` package with Argon2 key derivation.
+### 2. 🤖 Smart Rules & Auto-Categorization Engine
+* **Goal**: Heuristic matching rules (e.g. *If note contains "Uber" -> Transport; "Starbucks" -> Coffee*).
+* **Architecture**: `AutoRules` table executed on transaction entry, OCR, and CSV import.
 
-### 3. Biometric App Lock & Privacy Shield
-* **Goal**: Require Fingerprint / Face ID / PIN to unlock the app, with window blurring when switching apps in the OS task switcher.
+### 3. 📅 Cash Flow Calendar & Spending Heatmap
+* **Goal**: GitHub-style color intensity monthly grid of daily spending burn rate and upcoming bill dots.
+* **UI**: Interactive calendar grid with day-tap transaction drawer.
+
+### 4. 📱 Home Screen & Lock Screen Quick-Add Widgets
+* **Goal**: 1-tap expense logging and current month balance glance directly from the phone launcher.
+* **Architecture**: `home_widget` package for Android AppWidgetProvider & iOS WidgetKit.
+
+### 5. 📄 PDF Financial Statements & Tax Reports
+* **Goal**: Export professionally formatted, printable PDF monthly summaries and tax-ready ledgers.
+* **Architecture**: `pdf` and `printing` packages.
+
+---
+
+## 💱 Phase 3: Version 1.3.0 — Global & Travel Finance
+
+### 1. 💱 Multi-Currency with Offline FX Rate Caching
+* **Goal**: Record transactions in foreign currencies with automatic base-currency conversion.
+* **Architecture**: `CurrencyRates` local table with on-demand offline-friendly refresh.
+
+### 2. ✈️ Travel Mode / Trip Budgets
+* **Goal**: Dedicated temporary trip budget isolated from daily home expenses.
+
+### 3. 📥 Bank SMS Notification Auto-Capture (Android only, opt-in)
+* **Goal**: Local regex parser matching bank transaction notification SMS with user whitelist.
+
+---
+
+## ☁️ Phase 4: Version 2.0.0 — Private Cloud Sync & Multi-Device
+
+### 1. ☁️ Encrypted Private Cloud Sync (E2EE)
+* **Goal**: Multi-device sync across Android, iOS, and Desktop without third-party data tracking.
+* **Architecture**: AES-GCM-256 zero-knowledge encryption + WebDAV (Nextcloud/ownCloud) & Google Drive AppData sync.
+
+### 2. 💻 Desktop Companion Apps
+* **Goal**: Native full-screen desktop experiences for Windows, macOS, and Linux.
