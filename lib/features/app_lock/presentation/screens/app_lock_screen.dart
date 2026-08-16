@@ -58,7 +58,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen>
       setState(() {
         _isAuthenticating = false;
         if (!success) {
-          _errorMessage = 'Authentication failed. Tap to try again.';
+          _errorMessage = lockService.lastError ?? 'Authentication failed. Tap to try again.';
           HapticFeedback.heavyImpact();
           _shakeController.forward(from: 0);
         }

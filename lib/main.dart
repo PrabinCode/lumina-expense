@@ -114,7 +114,7 @@ class _AppLockGateState extends ConsumerState<_AppLockGate> with WidgetsBindingO
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
         lockService.onAppPaused();
-        if (lockService.privacyShieldEnabled && lockService.isEnabled) {
+        if (lockService.privacyShieldEnabled && lockService.isEnabled && !lockService.isAuthenticating) {
           setState(() => _isInBackground = true);
         }
         break;
