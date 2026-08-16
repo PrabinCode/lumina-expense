@@ -5,10 +5,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../accounts/presentation/screens/accounts_screen.dart';
+import '../../../app_lock/data/app_lock_service.dart';
 import '../../../backup/presentation/screens/backup_screen.dart';
 import '../../../budgets/presentation/screens/budgets_screen.dart';
 import '../../../debts/presentation/screens/debts_screen.dart';
 import '../../../goals/presentation/screens/goals_screen.dart';
+import '../../../health/presentation/screens/financial_health_screen.dart';
 import '../../../subscriptions/presentation/screens/subscriptions_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -25,6 +27,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentTheme = ref.watch(themeModeProvider);
+    final lockService = ref.watch(appLockServiceProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -80,7 +83,128 @@ class SettingsScreen extends ConsumerWidget {
 
               const SizedBox(height: 24),
 
+              // ─── Security & Privacy ───
+              const Text('Security & Privacy', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+
+              Material(
+                color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                clipBehavior: Clip.antiAlias,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                ),
+                child: Column(
+                  children: [
+                    // App Lock toggle
+                    SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                      secondary: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.fingerprint_rounded, color: AppColors.primary, size: 20),
+                      ),
+                      title: const Text('Biometric App Lock', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      subtitle: Text(
+                        lockService.isEnabled ? 'Enabled • ${lockService.timeout.label}' : 'Protect with Face ID / Fingerprint / PIN',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      value: lockService.isEnabled,
+                      activeTrackColor: AppColors.primary,
+                      onChanged: (val) async {
+                        await lockService.setEnabled(val);
+                      },
+                    ),
+
+                    if (lockService.isEnabled) ...[
+                      const Divider(height: 1),
+
+                      // Lock timeout selection
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                        leading: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.timer_outlined, color: AppColors.warning, size: 20),
+                        ),
+                        title: const Text('Lock After', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        subtitle: Text(
+                          lockService.timeout.label,
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                        onTap: () => _showTimeoutPicker(context, lockService),
+                      ),
+
+                      const Divider(height: 1),
+
+                      // Privacy shield toggle
+                      SwitchListTile.adaptive(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                        secondary: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.secondary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.visibility_off_rounded, color: AppColors.secondary, size: 20),
+                        ),
+                        title: const Text('Privacy Shield', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        subtitle: const Text(
+                          'Hide content in app switcher',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        value: lockService.privacyShieldEnabled,
+                        activeTrackColor: AppColors.primary,
+                        onChanged: (val) async {
+                          await lockService.setPrivacyShield(val);
+                        },
+                      ),
+
+                      const Divider(height: 1),
+
+                      // Lock now button
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                        leading: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.expense.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.lock_outline_rounded, color: AppColors.expense, size: 20),
+                        ),
+                        title: const Text('Lock Now', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        subtitle: const Text(
+                          'Immediately lock the app',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                        onTap: () => lockService.lock(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
               const Text('Data & Tools', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Financial Health Score',
+                subtitle: 'Smart insights & spending analysis',
+                icon: Icons.favorite_border_rounded,
+                iconColor: AppColors.expense,
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FinancialHealthScreen())),
+              ),
               const SizedBox(height: 8),
 
               _SettingsNavTile(
@@ -257,6 +381,67 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+
+  void _showTimeoutPicker(BuildContext context, AppLockService lockService) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'Auto-Lock After',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...LockTimeout.values.map((timeout) {
+                final isSelected = lockService.timeout == timeout;
+                return ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                  title: Text(
+                    timeout.label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected ? AppColors.primary : null,
+                    ),
+                  ),
+                  trailing: isSelected
+                      ? const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 22)
+                      : null,
+                  onTap: () {
+                    lockService.setTimeout(timeout);
+                    Navigator.pop(context);
+                  },
+                );
+              }),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
     );
   }
 }

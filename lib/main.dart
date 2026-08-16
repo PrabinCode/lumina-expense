@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'features/analytics/presentation/screens/analytics_screen.dart';
+import 'features/app_lock/data/app_lock_service.dart';
+import 'features/app_lock/presentation/screens/app_lock_screen.dart';
+import 'features/app_lock/presentation/widgets/privacy_shield_widget.dart';
 import 'features/budgets/presentation/screens/budgets_screen.dart';
 import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
@@ -52,7 +55,80 @@ class LuminaExpenseApp extends ConsumerWidget {
       theme: AppTheme.lightTheme,
       darkTheme: activeDarkTheme,
       themeMode: flutterThemeMode,
-      home: const MainNavigationShell(),
+      home: const _AppLockGate(),
+    );
+  }
+}
+
+/// Gate widget that shows lock screen or main content based on lock state.
+/// Also handles privacy shield and app lifecycle transitions.
+class _AppLockGate extends ConsumerStatefulWidget {
+  const _AppLockGate();
+
+  @override
+  ConsumerState<_AppLockGate> createState() => _AppLockGateState();
+}
+
+class _AppLockGateState extends ConsumerState<_AppLockGate>
+    with WidgetsBindingObserver {
+  bool _isInBackground = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final lockService = ref.read(appLockServiceProvider);
+
+    switch (state) {
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        // App going to background
+        lockService.onAppPaused();
+        if (lockService.privacyShieldEnabled && lockService.isEnabled) {
+          setState(() => _isInBackground = true);
+        }
+        break;
+      case AppLifecycleState.resumed:
+        // App coming to foreground
+        setState(() => _isInBackground = false);
+        lockService.onAppResumed();
+        break;
+      case AppLifecycleState.detached:
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lockService = ref.watch(appLockServiceProvider);
+
+    // Show loading while lock service initializes
+    if (!lockService.initialized) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // Show lock screen if locked
+    if (lockService.isEnabled && lockService.isLocked) {
+      return const AppLockScreen();
+    }
+
+    // Show main content with optional privacy shield overlay
+    return PrivacyShieldWidget(
+      isActive: _isInBackground,
+      child: const MainNavigationShell(),
     );
   }
 }
