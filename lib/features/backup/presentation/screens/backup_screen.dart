@@ -15,7 +15,30 @@ class BackupScreen extends ConsumerStatefulWidget {
 class _BackupScreenState extends ConsumerState<BackupScreen> {
   bool _isLoading = false;
 
-  Future<void> _handleExportJson() async {
+  Future<void> _handleSaveBackupToDevice() async {
+    setState(() => _isLoading = true);
+    try {
+      final path = await ref.read(backupRestoreServiceProvider).saveBackupToDeviceStorage();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Backup saved successfully to: $path'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Save failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleShareJson() async {
     setState(() => _isLoading = true);
     try {
       await ref.read(backupRestoreServiceProvider).exportBackupJson();
@@ -30,7 +53,30 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     }
   }
 
-  Future<void> _handleExportCsv() async {
+  Future<void> _handleSaveCsvToDevice() async {
+    setState(() => _isLoading = true);
+    try {
+      final path = await ref.read(backupRestoreServiceProvider).saveCsvToDeviceStorage();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('CSV saved successfully to: $path'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('CSV Save failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleShareCsv() async {
     setState(() => _isLoading = true);
     try {
       await ref.read(backupRestoreServiceProvider).exportTransactionsCsv();
@@ -196,25 +242,45 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
                   const SizedBox(height: 20),
 
-                  const Text('Backup to Cloud / Storage', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  const Text('Device Storage & File Export', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 8),
 
                   _ActionTile(
-                    title: 'Export Backup (JSON)',
-                    subtitle: 'Save snapshot directly to Google Drive, Files, or send to yourself.',
-                    icon: Icons.cloud_upload_outlined,
+                    title: 'Save Backup to Device (JSON)',
+                    subtitle: 'Directly save snapshot to your device Downloads/Documents folder.',
+                    icon: Icons.save_alt_rounded,
                     iconColor: AppColors.primary,
-                    onTap: _handleExportJson,
+                    onTap: _handleSaveBackupToDevice,
                   ),
 
                   const SizedBox(height: 8),
 
                   _ActionTile(
-                    title: 'Export to CSV (Excel / Sheets)',
-                    subtitle: 'Export raw transaction spreadsheet for external calculations.',
-                    icon: Icons.table_chart_outlined,
+                    title: 'Share Backup to Cloud / Drive',
+                    subtitle: 'Send JSON snapshot via Google Drive, Email, or other apps.',
+                    icon: Icons.cloud_upload_outlined,
                     iconColor: AppColors.transfer,
-                    onTap: _handleExportCsv,
+                    onTap: _handleShareJson,
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  _ActionTile(
+                    title: 'Save CSV to Device (Spreadsheet)',
+                    subtitle: 'Directly save raw Excel/Sheets CSV file to local storage.',
+                    icon: Icons.file_download_outlined,
+                    iconColor: const Color(0xFF10B981),
+                    onTap: _handleSaveCsvToDevice,
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  _ActionTile(
+                    title: 'Share CSV via Apps',
+                    subtitle: 'Share transaction spreadsheet directly with other applications.',
+                    icon: Icons.share_outlined,
+                    iconColor: const Color(0xFF6366F1),
+                    onTap: _handleShareCsv,
                   ),
 
                   const SizedBox(height: 24),

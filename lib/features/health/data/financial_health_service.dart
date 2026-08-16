@@ -341,13 +341,31 @@ class FinancialHealthService {
   }
 
   Future<double> _getSumForCategory(String categoryId, DateTime start, DateTime end) async {
-    final query = _db.select(_db.transactions)
-      ..where((t) => t.categoryId.equals(categoryId))
-      ..where((t) => t.type.equals('expense'))
-      ..where((t) => t.date.isBiggerOrEqualValue(start))
-      ..where((t) => t.date.isSmallerOrEqualValue(end));
-    final txs = await query.get();
-    return txs.fold<double>(0.0, (sum, t) => sum + t.amount);
+    final directTxs = await (_db.select(_db.transactions)
+          ..where((t) =>
+              t.categoryId.equals(categoryId) &
+              t.type.equals('expense') &
+              t.isSplit.equals(false) &
+              t.date.isBiggerOrEqualValue(start) &
+              t.date.isSmallerOrEqualValue(end)))
+        .get();
+    final directSpent = directTxs.fold<double>(0.0, (sum, t) => sum + t.amount);
+
+    final splitRows = await (_db.select(_db.transactionSplits).join([
+      innerJoin(_db.transactions, _db.transactions.id.equalsExp(_db.transactionSplits.transactionId)),
+    ])
+          ..where(_db.transactionSplits.categoryId.equals(categoryId) &
+              _db.transactions.type.equals('expense') &
+              _db.transactions.date.isBiggerOrEqualValue(start) &
+              _db.transactions.date.isSmallerOrEqualValue(end)))
+        .get();
+
+    final splitSpent = splitRows.fold<double>(
+      0.0,
+      (sum, row) => sum + row.readTable(_db.transactionSplits).amount,
+    );
+
+    return directSpent + splitSpent;
   }
 
   Future<List<double>> _getDailyExpenses(DateTime start, DateTime end) async {

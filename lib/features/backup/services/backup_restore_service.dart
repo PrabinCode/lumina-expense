@@ -182,6 +182,43 @@ class BackupRestoreService {
     return filePath;
   }
 
+  /// 1b. Save Backup (JSON) directly to device Documents / Downloads storage
+  Future<String> saveBackupToDeviceStorage() async {
+    final categories = await _db.select(_db.categories).get();
+    final accounts = await _db.select(_db.accounts).get();
+    final transactions = await _db.select(_db.transactions).get();
+    final budgets = await _db.select(_db.budgets).get();
+    final debts = await _db.select(_db.debts).get();
+    final goals = await _db.select(_db.goals).get();
+    final subscriptions = await _db.select(_db.recurringTransactions).get();
+    final splits = await _db.select(_db.transactionSplits).get();
+
+    final backupPayload = {
+      'version': 2,
+      'appName': 'LuminaExpense',
+      'exportDate': DateTime.now().toIso8601String(),
+      'data': {
+        'categories': categories.map((c) => {'id': c.id, 'name': c.name, 'type': c.type, 'icon': c.icon, 'color': c.color, 'isDefault': c.isDefault}).toList(),
+        'accounts': accounts.map((a) => {'id': a.id, 'name': a.name, 'type': a.type, 'initialBalance': a.initialBalance, 'currency': a.currency, 'icon': a.icon, 'color': a.color, 'isArchived': a.isArchived, 'createdAt': a.createdAt.toIso8601String()}).toList(),
+        'transactions': transactions.map((t) => {'id': t.id, 'title': t.title, 'amount': t.amount, 'type': t.type, 'categoryId': t.categoryId, 'accountId': t.accountId, 'toAccountId': t.toAccountId, 'date': t.date.toIso8601String(), 'note': t.note, 'tags': t.tags, 'receiptPath': t.receiptPath, 'isSplit': t.isSplit, 'createdAt': t.createdAt.toIso8601String()}).toList(),
+        'transactionSplits': splits.map((s) => {'id': s.id, 'transactionId': s.transactionId, 'categoryId': s.categoryId, 'amount': s.amount, 'note': s.note}).toList(),
+        'budgets': budgets.map((b) => {'id': b.id, 'categoryId': b.categoryId, 'amountLimit': b.amountLimit, 'period': b.period, 'startDate': b.startDate.toIso8601String()}).toList(),
+        'debts': debts.map((d) => {'id': d.id, 'personName': d.personName, 'amount': d.amount, 'settledAmount': d.settledAmount, 'type': d.type, 'accountId': d.accountId, 'dueDate': d.dueDate?.toIso8601String(), 'isSettled': d.isSettled, 'notes': d.notes, 'createdAt': d.createdAt.toIso8601String()}).toList(),
+        'goals': goals.map((g) => {'id': g.id, 'name': g.name, 'targetAmount': g.targetAmount, 'currentAmount': g.currentAmount, 'targetDate': g.targetDate?.toIso8601String(), 'iconName': g.iconName, 'colorValue': g.colorValue, 'notes': g.notes, 'isCompleted': g.isCompleted, 'createdAt': g.createdAt.toIso8601String()}).toList(),
+        'recurringTransactions': subscriptions.map((s) => {'id': s.id, 'title': s.title, 'amount': s.amount, 'categoryId': s.categoryId, 'accountId': s.accountId, 'frequency': s.frequency, 'interval': s.interval, 'nextDueDate': s.nextDueDate.toIso8601String(), 'autoLog': s.autoLog, 'isActive': s.isActive, 'notes': s.notes, 'createdAt': s.createdAt.toIso8601String()}).toList(),
+      }
+    };
+
+    final jsonString = const JsonEncoder.withIndent('  ').convert(backupPayload);
+    final targetDir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final filePath = '${targetDir.path}/lumina_backup_$timestamp.json';
+
+    final file = File(filePath);
+    await file.writeAsString(jsonString);
+    return filePath;
+  }
+
   /// 2. Export Transactions to CSV (Excel / Sheets compatible)
   Future<String> exportTransactionsCsv() async {
     final cat = _db.categories;
@@ -235,6 +272,55 @@ class BackupRestoreService {
       text: 'Exported transaction history.',
     );
 
+    return filePath;
+  }
+
+  /// 2b. Save Transactions CSV directly to device storage
+  Future<String> saveCsvToDeviceStorage() async {
+    final cat = _db.categories;
+    final srcAcc = _db.alias(_db.accounts, 'src');
+    final dstAcc = _db.alias(_db.accounts, 'dst');
+
+    final rows = await (_db.select(_db.transactions).join([
+      leftOuterJoin(cat, cat.id.equalsExp(_db.transactions.categoryId)),
+      innerJoin(srcAcc, srcAcc.id.equalsExp(_db.transactions.accountId)),
+      leftOuterJoin(dstAcc, dstAcc.id.equalsExp(_db.transactions.toAccountId)),
+    ])
+          ..orderBy([OrderingTerm(expression: _db.transactions.date, mode: OrderingMode.desc)]))
+        .get();
+
+    final List<List<dynamic>> csvData = [
+      ['Date', 'Time', 'Title', 'Type', 'Category', 'Account', 'Transfer To', 'Amount', 'Currency', 'Notes', 'Tags']
+    ];
+
+    for (final row in rows) {
+      final t = row.readTable(_db.transactions);
+      final c = row.readTableOrNull(cat);
+      final src = row.readTable(srcAcc);
+      final dst = row.readTableOrNull(dstAcc);
+
+      csvData.add([
+        DateFormat('yyyy-MM-dd').format(t.date),
+        DateFormat('HH:mm:ss').format(t.date),
+        t.title,
+        t.type.toUpperCase(),
+        c?.name ?? (t.type == 'transfer' ? 'Transfer' : 'Uncategorized'),
+        src.name,
+        dst?.name ?? '',
+        t.amount,
+        src.currency,
+        t.note ?? '',
+        t.tags ?? '',
+      ]);
+    }
+
+    final csvString = const ListToCsvConverter().convert(csvData);
+    final targetDir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final filePath = '${targetDir.path}/transactions_$timestamp.csv';
+
+    final file = File(filePath);
+    await file.writeAsString(csvString);
     return filePath;
   }
 

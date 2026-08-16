@@ -1,20 +1,107 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../accounts/presentation/screens/accounts_screen.dart';
 import '../../../app_lock/data/app_lock_service.dart';
 import '../../../backup/presentation/screens/backup_screen.dart';
 import '../../../budgets/presentation/screens/budgets_screen.dart';
+import '../../../categories/presentation/screens/categories_screen.dart';
 import '../../../debts/presentation/screens/debts_screen.dart';
 import '../../../goals/presentation/screens/goals_screen.dart';
 import '../../../health/presentation/screens/financial_health_screen.dart';
 import '../../../subscriptions/presentation/screens/subscriptions_screen.dart';
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  String _userName = '';
+  String _userEmail = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _userName = prefs.getString('user_profile_name') ?? '';
+      _userEmail = prefs.getString('user_profile_email') ?? '';
+    });
+  }
+
+  Future<void> _editUserProfile() async {
+    final nameController = TextEditingController(text: _userName);
+    final emailController = TextEditingController(text: _userEmail);
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Edit User Profile', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Your Name',
+                  hintText: 'e.g. Alex Smith',
+                  prefixIcon: Icon(Icons.person_outline_rounded),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email Address',
+                  hintText: 'e.g. alex@example.com',
+                  prefixIcon: Icon(Icons.mail_outline_rounded),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (saved == true) {
+      final prefs = await SharedPreferences.getInstance();
+      final name = nameController.text.trim();
+      final email = emailController.text.trim();
+      await prefs.setString('user_profile_name', name);
+      await prefs.setString('user_profile_email', email);
+      setState(() {
+        _userName = name;
+        _userEmail = email;
+      });
+    }
+  }
 
   Future<void> _launchUrl(String urlString) async {
     final uri = Uri.parse(urlString);
@@ -23,10 +110,51 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
+  void _showUpdateCheckDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.system_update_alt_rounded, color: AppColors.primary),
+              SizedBox(width: 10),
+              Text('App Update', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Current Installed Version: v1.1.0', style: TextStyle(fontWeight: FontWeight.w600)),
+              SizedBox(height: 8),
+              Text(
+                'Lumina Expense is 100% offline-first. You can check the latest releases, change logs, and download updated APKs on GitHub.',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+              onPressed: () {
+                Navigator.pop(context);
+                _launchUrl('https://github.com/PrabinCode/lumina-expense/releases');
+              },
+              child: const Text('View Releases on GitHub'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentTheme = ref.watch(themeModeProvider);
+    final activeCurrency = ref.watch(currencyProvider);
     final lockService = ref.watch(appLockServiceProvider);
 
     return Scaffold(
@@ -39,8 +167,60 @@ class SettingsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Appearance & Theme', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              // ─── User Profile Card ───
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 26,
+                      backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+                      child: Text(
+                        _userName.isNotEmpty ? _userName[0].toUpperCase() : 'L',
+                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.primary),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _userName.isNotEmpty ? _userName : 'Lumina User',
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _userEmail.isNotEmpty ? _userEmail : 'Personal Offline Vault',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 20),
+                      onPressed: _editUserProfile,
+                      tooltip: 'Edit Profile',
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // ─── Preferences (Theme & Currency) ───
+              const Text('Appearance & Currency', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
+
               Material(
                 color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
                 clipBehavior: Clip.antiAlias,
@@ -50,38 +230,89 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 child: Column(
                   children: [
-                    _ThemeSelectionTile(
-                      title: 'System Default',
-                      value: AppThemeMode.system,
-                      selected: currentTheme == AppThemeMode.system,
-                      onTap: () => ref.read(themeModeProvider.notifier).state = AppThemeMode.system,
+                    // Compact Theme Dropdown Tile
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      leading: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.palette_outlined, color: AppColors.primary, size: 20),
+                      ),
+                      title: const Text('Theme Mode', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      subtitle: Text(
+                        _getThemeLabel(currentTheme),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      trailing: DropdownButtonHideUnderline(
+                        child: DropdownButton<AppThemeMode>(
+                          value: currentTheme,
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                          items: const [
+                            DropdownMenuItem(value: AppThemeMode.system, child: Text('System Default', style: TextStyle(fontSize: 13))),
+                            DropdownMenuItem(value: AppThemeMode.light, child: Text('Light Mode', style: TextStyle(fontSize: 13))),
+                            DropdownMenuItem(value: AppThemeMode.dark, child: Text('Dark Slate', style: TextStyle(fontSize: 13))),
+                            DropdownMenuItem(value: AppThemeMode.amoled, child: Text('AMOLED Black', style: TextStyle(fontSize: 13))),
+                          ],
+                          onChanged: (mode) {
+                            if (mode != null) {
+                              ref.read(themeModeProvider.notifier).setTheme(mode);
+                            }
+                          },
+                        ),
+                      ),
                     ),
+
                     const Divider(height: 1),
-                    _ThemeSelectionTile(
-                      title: 'Light Mode',
-                      value: AppThemeMode.light,
-                      selected: currentTheme == AppThemeMode.light,
-                      onTap: () => ref.read(themeModeProvider.notifier).state = AppThemeMode.light,
-                    ),
-                    const Divider(height: 1),
-                    _ThemeSelectionTile(
-                      title: 'Dark Mode (Slate)',
-                      value: AppThemeMode.dark,
-                      selected: currentTheme == AppThemeMode.dark,
-                      onTap: () => ref.read(themeModeProvider.notifier).state = AppThemeMode.dark,
-                    ),
-                    const Divider(height: 1),
-                    _ThemeSelectionTile(
-                      title: 'AMOLED Pitch Black Mode',
-                      value: AppThemeMode.amoled,
-                      selected: currentTheme == AppThemeMode.amoled,
-                      onTap: () => ref.read(themeModeProvider.notifier).state = AppThemeMode.amoled,
+
+                    // Global Base Currency Dropdown Tile
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      leading: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.monetization_on_outlined, color: Color(0xFF10B981), size: 20),
+                      ),
+                      title: const Text('Base Currency', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      subtitle: Text(
+                        '${activeCurrency.flag} ${activeCurrency.name} (${activeCurrency.symbol})',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: DropdownButtonHideUnderline(
+                        child: DropdownButton<AppCurrency>(
+                          value: supportedCurrencies.firstWhere(
+                            (c) => c.code == activeCurrency.code,
+                            orElse: () => supportedCurrencies.first,
+                          ),
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                          items: supportedCurrencies.map((currency) {
+                            return DropdownMenuItem(
+                              value: currency,
+                              child: Text(
+                                '${currency.flag} ${currency.code} (${currency.symbol})',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (currency) {
+                            if (currency != null) {
+                              ref.read(currencyProvider.notifier).setCurrency(currency);
+                            }
+                          },
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
               // ─── Security & Privacy ───
               const Text('Security & Privacy', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
@@ -96,7 +327,6 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 child: Column(
                   children: [
-                    // App Lock toggle
                     SwitchListTile.adaptive(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
                       secondary: Container(
@@ -122,7 +352,6 @@ class SettingsScreen extends ConsumerWidget {
                     if (lockService.isEnabled) ...[
                       const Divider(height: 1),
 
-                      // Lock timeout selection
                       ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
                         leading: Container(
@@ -144,7 +373,6 @@ class SettingsScreen extends ConsumerWidget {
 
                       const Divider(height: 1),
 
-                      // Privacy shield toggle
                       SwitchListTile.adaptive(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
                         secondary: Container(
@@ -169,7 +397,6 @@ class SettingsScreen extends ConsumerWidget {
 
                       const Divider(height: 1),
 
-                      // Lock now button
                       ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
                         leading: Container(
@@ -193,9 +420,19 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
+              // ─── Data & Tools ───
               const Text('Data & Tools', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Categories & Reordering',
+                subtitle: 'Add, edit, delete & drag to reorder categories',
+                icon: Icons.category_outlined,
+                iconColor: const Color(0xFFF97316),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoriesScreen())),
+              ),
               const SizedBox(height: 8),
 
               _SettingsNavTile(
@@ -209,7 +446,7 @@ class SettingsScreen extends ConsumerWidget {
 
               _SettingsNavTile(
                 title: 'Backup & Restore',
-                subtitle: 'Export to Google Drive, Files, or restore',
+                subtitle: 'Export to Device, Google Drive, or restore',
                 icon: Icons.cloud_sync_outlined,
                 iconColor: AppColors.primary,
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen())),
@@ -260,32 +497,19 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsScreen())),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-              const Text('About & Creator Credit', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              // ─── Streamlined About & Creator Credit ───
+              const Text('About', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
 
-              // Creator Profile Card with Credits to Prabin Chandra Shrestha (pcshrestha.com.np)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: isDark
-                        ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
-                        : [const Color(0xFFFFFFFF), const Color(0xFFF8FAFC)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
+                  color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -293,84 +517,59 @@ class SettingsScreen extends ConsumerWidget {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF10B981), Color(0xFF059669)],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
+                            color: AppColors.primary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(Icons.code_rounded, color: Colors.white, size: 24),
+                          child: const Icon(Icons.code_rounded, color: AppColors.primary, size: 22),
                         ),
-                        const SizedBox(width: 14),
+                        const SizedBox(width: 12),
                         const Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 'Prabin Chandra Shrestha',
-                                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                               ),
                               SizedBox(height: 2),
                               Text(
-                                'Senior Software Engineer • Kathmandu, Nepal',
-                                style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
+                                'Senior Software Engineer',
+                                style: TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ActionChip(
+                          avatar: const Icon(Icons.language_rounded, size: 14, color: AppColors.primary),
+                          label: const Text('pcshrestha.com.np', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                          onPressed: () => _launchUrl('https://pcshrestha.com.np'),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Lumina Expense v1.1.0',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey),
+                        ),
+                        InkWell(
+                          onTap: () => _showUpdateCheckDialog(context),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.system_update_alt_rounded, size: 14, color: AppColors.primary),
+                              SizedBox(width: 4),
+                              Text(
+                                'Check for Updates',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
                               ),
                             ],
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Architected with clean principles, 100% offline-first storage with Drift (SQLite), and state-of-the-art Riverpod architecture.',
-                      style: TextStyle(fontSize: 12, height: 1.4),
-                    ),
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        ActionChip(
-                          avatar: const Icon(Icons.language_rounded, size: 16, color: AppColors.primary),
-                          label: const Text('pcshrestha.com.np', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                          onPressed: () => _launchUrl('https://pcshrestha.com.np'),
-                        ),
-                        ActionChip(
-                          avatar: const Icon(Icons.terminal_rounded, size: 16),
-                          label: const Text('GitHub', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                          onPressed: () => _launchUrl('https://github.com/PrabinCode'),
-                        ),
-                        ActionChip(
-                          avatar: const Icon(Icons.link_rounded, size: 16, color: Color(0xFF0077B5)),
-                          label: const Text('LinkedIn', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                          onPressed: () => _launchUrl('https://www.linkedin.com/in/pcshrestha/'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.verified_user_outlined, color: AppColors.primary, size: 20),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Lumina Expense v1.0.0 • 100% Offline • MIT License',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey),
-                      ),
                     ),
                   ],
                 ),
@@ -382,6 +581,19 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  String _getThemeLabel(AppThemeMode mode) {
+    switch (mode) {
+      case AppThemeMode.system:
+        return 'System Default';
+      case AppThemeMode.light:
+        return 'Light Mode';
+      case AppThemeMode.dark:
+        return 'Dark Slate';
+      case AppThemeMode.amoled:
+        return 'AMOLED Black';
+    }
   }
 
   void _showTimeoutPicker(BuildContext context, AppLockService lockService) {
@@ -442,29 +654,6 @@ class SettingsScreen extends ConsumerWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _ThemeSelectionTile extends StatelessWidget {
-  final String title;
-  final AppThemeMode value;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ThemeSelectionTile({
-    required this.title,
-    required this.value,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      title: Text(title, style: const TextStyle(fontSize: 14)),
-      trailing: selected ? const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 20) : null,
-      onTap: onTap,
     );
   }
 }

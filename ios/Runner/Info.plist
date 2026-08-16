@@ -6,6 +6,8 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Lumina Expense uses Face ID to protect your private financial records.</string>
 	<key>CFBundleDisplayName</key>
 	<string>Lumina Expense</string>
 	<key>CFBundleExecutable</key>

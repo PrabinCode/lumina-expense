@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'app_colors.dart';
 
 enum AppThemeMode {
@@ -137,4 +138,32 @@ class AppTheme {
   }
 }
 
-final themeModeProvider = StateProvider<AppThemeMode>((ref) => AppThemeMode.system);
+class ThemeNotifier extends StateNotifier<AppThemeMode> {
+  static const _keyTheme = 'app_theme_mode';
+
+  ThemeNotifier() : super(AppThemeMode.system) {
+    _loadTheme();
+  }
+
+  Future<void> _loadTheme() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedIndex = prefs.getInt(_keyTheme);
+      if (savedIndex != null && savedIndex >= 0 && savedIndex < AppThemeMode.values.length) {
+        state = AppThemeMode.values[savedIndex];
+      }
+    } catch (_) {}
+  }
+
+  Future<void> setTheme(AppThemeMode mode) async {
+    state = mode;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_keyTheme, mode.index);
+    } catch (_) {}
+  }
+}
+
+final themeModeProvider = StateNotifierProvider<ThemeNotifier, AppThemeMode>((ref) {
+  return ThemeNotifier();
+});

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
@@ -12,13 +13,15 @@ import '../../data/account_repository.dart';
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
 
-  void _showAddAccountDialog(BuildContext context, WidgetRef ref) {
-    final nameController = TextEditingController();
-    final balanceController = TextEditingController(text: '0.00');
-    String type = 'bank';
-    String currency = 'USD';
-    String icon = 'account_balance';
-    int color = 0xFF2196F3;
+  void _showAddEditAccountDialog(BuildContext context, WidgetRef ref, {Account? accountToEdit}) {
+    final nameController = TextEditingController(text: accountToEdit?.name ?? '');
+    final balanceController = TextEditingController(
+      text: accountToEdit != null ? accountToEdit.initialBalance.toStringAsFixed(2) : '0.00',
+    );
+    String type = accountToEdit?.type ?? 'bank';
+    String currency = accountToEdit?.currency ?? ref.read(currencyProvider).code;
+    String icon = accountToEdit?.icon ?? 'account_balance';
+    int color = accountToEdit?.color ?? 0xFF2196F3;
 
     showDialog(
       context: context,
@@ -26,14 +29,21 @@ class AccountsScreen extends ConsumerWidget {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('Add Account / Wallet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              title: Text(
+                accountToEdit == null ? 'Add Account / Wallet' : 'Edit Account',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
                       controller: nameController,
-                      decoration: const InputDecoration(labelText: 'Account Name (e.g. Chase, Cash)', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: 'Account Name',
+                        hintText: 'e.g. Chase Bank, Cash Wallet',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
@@ -70,10 +80,10 @@ class AccountsScreen extends ConsumerWidget {
                     TextField(
                       controller: balanceController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: 'Initial Starting Balance',
-                        prefixText: '\$ ',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: accountToEdit == null ? 'Initial Starting Balance' : 'Base Initial Balance',
+                        prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
+                        border: const OutlineInputBorder(),
                       ),
                     ),
                   ],
@@ -82,30 +92,91 @@ class AccountsScreen extends ConsumerWidget {
               actions: [
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
                   onPressed: () async {
                     final name = nameController.text.trim();
                     final balance = double.tryParse(balanceController.text.trim()) ?? 0.0;
                     if (name.isEmpty) return;
 
-                    const uuid = Uuid();
-                    await ref.read(accountRepositoryProvider).createAccount(
-                          AccountsCompanion.insert(
-                            id: uuid.v4(),
-                            name: name,
-                            type: type,
-                            initialBalance: drift.Value(balance),
-                            currency: drift.Value(currency),
-                            icon: drift.Value(icon),
-                            color: drift.Value(color),
-                          ),
-                        );
+                    final repo = ref.read(accountRepositoryProvider);
+
+                    if (accountToEdit == null) {
+                      const uuid = Uuid();
+                      await repo.createAccount(
+                        AccountsCompanion.insert(
+                          id: uuid.v4(),
+                          name: name,
+                          type: type,
+                          initialBalance: drift.Value(balance),
+                          currency: drift.Value(currency),
+                          icon: drift.Value(icon),
+                          color: drift.Value(color),
+                        ),
+                      );
+                    } else {
+                      await repo.updateAccount(
+                        AccountsCompanion(
+                          id: drift.Value(accountToEdit.id),
+                          name: drift.Value(name),
+                          type: drift.Value(type),
+                          initialBalance: drift.Value(balance),
+                          currency: drift.Value(currency),
+                          icon: drift.Value(icon),
+                          color: drift.Value(color),
+                          isArchived: drift.Value(accountToEdit.isArchived),
+                          createdAt: drift.Value(accountToEdit.createdAt),
+                        ),
+                      );
+                    }
+
                     if (context.mounted) Navigator.pop(context);
                   },
-                  child: const Text('Save Account'),
+                  child: Text(accountToEdit == null ? 'Save Account' : 'Update Account'),
                 ),
               ],
             );
           },
+        );
+      },
+    );
+  }
+
+  void _confirmDeleteAccount(BuildContext context, WidgetRef ref, Account account, int totalAccounts) {
+    if (totalAccounts <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot delete the only remaining account.')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Delete "${account.name}"?'),
+          content: const Text(
+            'Are you sure you want to delete this account? Any associated transactions will remain but may lose their account link.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.expense,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                await ref.read(accountRepositoryProvider).deleteAccount(account.id);
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: const Text('Delete'),
+            ),
+          ],
         );
       },
     );
@@ -122,7 +193,8 @@ class AccountsScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.add_card_rounded),
-            onPressed: () => _showAddAccountDialog(context, ref),
+            tooltip: 'Add Account',
+            onPressed: () => _showAddEditAccountDialog(context, ref),
           ),
         ],
       ),
@@ -192,6 +264,40 @@ class AccountsScreen extends ConsumerWidget {
                               Text(
                                 acc.currency,
                                 style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 4),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert_rounded, size: 20, color: Colors.grey),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            onSelected: (action) {
+                              if (action == 'edit') {
+                                _showAddEditAccountDialog(context, ref, accountToEdit: acc);
+                              } else if (action == 'delete') {
+                                _confirmDeleteAccount(context, ref, acc, accounts.length);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit_outlined, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Edit Account'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.expense),
+                                    SizedBox(width: 8),
+                                    Text('Delete', style: TextStyle(color: AppColors.expense)),
+                                  ],
+                                ),
                               ),
                             ],
                           ),

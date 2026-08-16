@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
@@ -9,6 +10,7 @@ import 'features/app_lock/presentation/screens/app_lock_screen.dart';
 import 'features/app_lock/presentation/widgets/privacy_shield_widget.dart';
 import 'features/budgets/presentation/screens/budgets_screen.dart';
 import 'features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'features/onboarding/presentation/screens/onboarding_screen.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
 import 'features/transactions/presentation/screens/add_transaction_sheet.dart';
 
@@ -60,8 +62,7 @@ class LuminaExpenseApp extends ConsumerWidget {
   }
 }
 
-/// Gate widget that shows lock screen or main content based on lock state.
-/// Also handles privacy shield and app lifecycle transitions.
+/// Gate widget that shows onboarding, lock screen, or main content based on state.
 class _AppLockGate extends ConsumerStatefulWidget {
   const _AppLockGate();
 
@@ -69,14 +70,33 @@ class _AppLockGate extends ConsumerStatefulWidget {
   ConsumerState<_AppLockGate> createState() => _AppLockGateState();
 }
 
-class _AppLockGateState extends ConsumerState<_AppLockGate>
-    with WidgetsBindingObserver {
+class _AppLockGateState extends ConsumerState<_AppLockGate> with WidgetsBindingObserver {
   bool _isInBackground = false;
+  bool _isOnboarded = true;
+  bool _checkedOnboarding = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _checkOnboardingStatus();
+  }
+
+  Future<void> _checkOnboardingStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final onboarded = prefs.getBool('is_onboarded') ?? false;
+      if (mounted) {
+        setState(() {
+          _isOnboarded = onboarded;
+          _checkedOnboarding = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _checkedOnboarding = true);
+      }
+    }
   }
 
   @override
@@ -93,14 +113,12 @@ class _AppLockGateState extends ConsumerState<_AppLockGate>
       case AppLifecycleState.inactive:
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
-        // App going to background
         lockService.onAppPaused();
         if (lockService.privacyShieldEnabled && lockService.isEnabled) {
           setState(() => _isInBackground = true);
         }
         break;
       case AppLifecycleState.resumed:
-        // App coming to foreground
         setState(() => _isInBackground = false);
         lockService.onAppResumed();
         break;
@@ -113,11 +131,16 @@ class _AppLockGateState extends ConsumerState<_AppLockGate>
   Widget build(BuildContext context) {
     final lockService = ref.watch(appLockServiceProvider);
 
-    // Show loading while lock service initializes
-    if (!lockService.initialized) {
+    // Show loading while lock service or onboarding initializes
+    if (!lockService.initialized || !_checkedOnboarding) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
+    }
+
+    // First-time user onboarding
+    if (!_isOnboarded) {
+      return const OnboardingScreen();
     }
 
     // Show lock screen if locked

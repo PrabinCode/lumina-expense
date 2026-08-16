@@ -23,11 +23,21 @@ class FinancialHealthScreen extends ConsumerWidget {
         backgroundColor: surfaceColor,
         elevation: 0,
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: () => ref.refresh(financialHealthProvider),
+            tooltip: 'Recalculate Health Score',
+          ),
+        ],
       ),
-      body: healthState.when(
-        data: (report) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
+      body: RefreshIndicator(
+        onRefresh: () async => ref.refresh(financialHealthProvider),
+        child: healthState.when(
+          data: (report) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -85,8 +95,9 @@ class FinancialHealthScreen extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildHeroSection(FinancialHealthReport report, Color surfaceColor, Color borderColor, Color textColor) {
     return Container(

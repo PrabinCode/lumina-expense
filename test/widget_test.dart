@@ -9,8 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('App starts and renders dashboard with in-memory database', (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
+  testWidgets('App starts and renders dashboard when onboarded', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({'is_onboarded': true});
     final testDb = AppDatabase(NativeDatabase.memory());
 
     await tester.pumpWidget(
@@ -28,6 +28,28 @@ void main() {
 
     expect(find.text('Lumina Expense'), findsWidgets);
     expect(find.text('Total Net Worth'), findsOneWidget);
+
+    await testDb.close();
+  });
+
+  testWidgets('App shows onboarding screen on first launch', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({'is_onboarded': false});
+    final testDb = AppDatabase(NativeDatabase.memory());
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appDatabaseProvider.overrideWithValue(testDb),
+        ],
+        child: const LuminaExpenseApp(),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Welcome to Lumina Expense'), findsOneWidget);
+    expect(find.text('Get Started'), findsOneWidget);
 
     await testDb.close();
   });

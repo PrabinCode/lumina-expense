@@ -1,20 +1,25 @@
 import 'package:intl/intl.dart';
 
 class CurrencyFormatter {
-  static String format(double amount, {String currencySymbol = '\$'}) {
+  /// Global active currency symbol set dynamically by CurrencyNotifier
+  static String activeCurrencySymbol = '\$';
+
+  static String format(double amount, {String? currencySymbol}) {
+    final symbol = currencySymbol ?? activeCurrencySymbol;
     final formatter = NumberFormat.currency(
-      symbol: currencySymbol,
+      symbol: symbol,
       decimalDigits: 2,
     );
     return formatter.format(amount);
   }
 
-  static String formatCompact(double amount, {String currencySymbol = '\$'}) {
+  static String formatCompact(double amount, {String? currencySymbol}) {
+    final symbol = currencySymbol ?? activeCurrencySymbol;
     if (amount.abs() >= 1000000) {
-      return '$currencySymbol${(amount / 1000000).toStringAsFixed(1)}M';
+      return '$symbol${(amount / 1000000).toStringAsFixed(1)}M';
     } else if (amount.abs() >= 1000) {
-      return '$currencySymbol${(amount / 1000).toStringAsFixed(1)}k';
+      return '$symbol${(amount / 1000).toStringAsFixed(1)}k';
     }
-    return format(amount, currencySymbol: currencySymbol);
+    return format(amount, currencySymbol: symbol);
   }
 }

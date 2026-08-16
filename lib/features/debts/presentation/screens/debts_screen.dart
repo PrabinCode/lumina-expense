@@ -35,24 +35,23 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
-                        Expanded(
-                          child: ChoiceChip(
-                            label: const Center(child: Text('Lent (They Owe Me)')),
-                            selected: type == 'lent',
-                            selectedColor: AppColors.income.withValues(alpha: 0.2),
-                            onSelected: (_) => setState(() => type = 'lent'),
-                          ),
+                        ChoiceChip(
+                          avatar: Icon(Icons.arrow_downward_rounded, size: 16, color: type == 'lent' ? AppColors.income : null),
+                          label: const Text('Lent (They Owe Me)'),
+                          selected: type == 'lent',
+                          selectedColor: AppColors.income.withValues(alpha: 0.2),
+                          onSelected: (_) => setState(() => type = 'lent'),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ChoiceChip(
-                            label: const Center(child: Text('Borrowed (I Owe)')),
-                            selected: type == 'borrowed',
-                            selectedColor: AppColors.expense.withValues(alpha: 0.2),
-                            onSelected: (_) => setState(() => type = 'borrowed'),
-                          ),
+                        ChoiceChip(
+                          avatar: Icon(Icons.arrow_upward_rounded, size: 16, color: type == 'borrowed' ? AppColors.expense : null),
+                          label: const Text('Borrowed (I Owe)'),
+                          selected: type == 'borrowed',
+                          selectedColor: AppColors.expense.withValues(alpha: 0.2),
+                          onSelected: (_) => setState(() => type = 'borrowed'),
                         ),
                       ],
                     ),
@@ -65,10 +64,10 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
                     TextField(
                       controller: amountController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Amount',
-                        prefixText: '\$ ',
-                        border: OutlineInputBorder(),
+                        prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
+                        border: const OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -268,11 +267,35 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
                     ),
-                    child: const Column(
+                    child: Column(
                       children: [
-                        Icon(Icons.handshake_outlined, size: 48, color: Colors.grey),
-                        SizedBox(height: 12),
-                        Text('No active debts or IOUs', style: TextStyle(fontWeight: FontWeight.w600)),
+                        Icon(Icons.handshake_outlined, size: 48, color: Colors.grey.withValues(alpha: 0.6)),
+                        const SizedBox(height: 12),
+                        Text(
+                          _showSettled ? 'No settled debts' : 'No active debts or IOUs',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Track money lent to friends or borrowed from others.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton.icon(
+                          onPressed: _showAddDebtDialog,
+                          icon: const Icon(Icons.add_rounded, size: 20),
+                          label: const Text('Add Debt / Loan', style: TextStyle(fontWeight: FontWeight.w700)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                        ),
                       ],
                     ),
                   );
