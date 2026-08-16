@@ -80,3 +80,21 @@ class Debts extends Table {
   @override
   Set<Column> get primaryKey => {id};
 }
+
+/// Savings Goals & Sinking Funds Table
+class Goals extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text().withLength(min: 1, max: 100)();
+  RealColumn get targetAmount => real()();
+  RealColumn get currentAmount => real().withDefault(const Constant(0.0))();
+  DateTimeColumn get targetDate => dateTime().nullable()();
+  TextColumn get iconName => text().withDefault(const Constant('savings'))();
+  IntColumn get colorValue => integer().withDefault(const Constant(0xFF10B981))();
+  TextColumn get notes => text().nullable()();
+  BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../widgets/dashboard_goals_card.dart';
 import '../widgets/quick_actions_bar.dart';
 import '../widgets/recent_transactions_list.dart';
 import '../widgets/total_balance_card.dart';
@@ -28,7 +29,8 @@ class DashboardScreen extends ConsumerWidget {
             TotalBalanceCard(),
             SizedBox(height: 16),
             QuickActionsBar(),
-            SizedBox(height: 20),
+            SizedBox(height: 16),
+            DashboardGoalsCard(),
             RecentTransactionsList(),
             SizedBox(height: 80), // Padding for navigation bar
           ],

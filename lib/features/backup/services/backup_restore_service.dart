@@ -22,6 +22,7 @@ class BackupPreview {
   final int transactionCount;
   final int budgetCount;
   final int debtCount;
+  final int goalCount;
 
   BackupPreview({
     required this.version,
@@ -32,6 +33,7 @@ class BackupPreview {
     required this.transactionCount,
     required this.budgetCount,
     required this.debtCount,
+    this.goalCount = 0,
   });
 }
 
@@ -47,9 +49,10 @@ class BackupRestoreService {
     final transactions = await _db.select(_db.transactions).get();
     final budgets = await _db.select(_db.budgets).get();
     final debts = await _db.select(_db.debts).get();
+    final goals = await _db.select(_db.goals).get();
 
     final backupPayload = {
-      'version': 1,
+      'version': 2,
       'appName': 'LuminaExpense',
       'exportDate': DateTime.now().toIso8601String(),
       'data': {
@@ -114,6 +117,20 @@ class BackupRestoreService {
                   'isSettled': d.isSettled,
                   'notes': d.notes,
                   'createdAt': d.createdAt.toIso8601String(),
+                })
+            .toList(),
+        'goals': goals
+            .map((g) => {
+                  'id': g.id,
+                  'name': g.name,
+                  'targetAmount': g.targetAmount,
+                  'currentAmount': g.currentAmount,
+                  'targetDate': g.targetDate?.toIso8601String(),
+                  'iconName': g.iconName,
+                  'colorValue': g.colorValue,
+                  'notes': g.notes,
+                  'isCompleted': g.isCompleted,
+                  'createdAt': g.createdAt.toIso8601String(),
                 })
             .toList(),
       }
@@ -224,6 +241,7 @@ class BackupRestoreService {
       transactionCount: (data['transactions'] as List?)?.length ?? 0,
       budgetCount: (data['budgets'] as List?)?.length ?? 0,
       debtCount: (data['debts'] as List?)?.length ?? 0,
+      goalCount: (data['goals'] as List?)?.length ?? 0,
     );
 
     return (filePath: path, preview: preview);
@@ -241,6 +259,7 @@ class BackupRestoreService {
       await _db.delete(_db.transactions).go();
       await _db.delete(_db.debts).go();
       await _db.delete(_db.budgets).go();
+      await _db.delete(_db.goals).go();
       await _db.delete(_db.categories).go();
       await _db.delete(_db.accounts).go();
 
@@ -331,6 +350,25 @@ class BackupRestoreService {
               ),
             );
       }
+
+      // 7. Insert Goals
+      final goalsList = (data['goals'] as List? ?? []);
+      for (final g in goalsList) {
+        await _db.into(_db.goals).insert(
+              GoalsCompanion.insert(
+                id: g['id'],
+                name: g['name'],
+                targetAmount: (g['targetAmount'] as num).toDouble(),
+                currentAmount: Value((g['currentAmount'] as num?)?.toDouble() ?? 0.0),
+                targetDate: Value(g['targetDate'] != null ? DateTime.tryParse(g['targetDate']) : null),
+                iconName: Value(g['iconName'] ?? 'savings'),
+                colorValue: Value(g['colorValue'] ?? 0xFF10B981),
+                notes: Value(g['notes']),
+                isCompleted: Value(g['isCompleted'] ?? false),
+                createdAt: Value(DateTime.tryParse(g['createdAt'] ?? '') ?? DateTime.now()),
+              ),
+            );
+      }
     });
   }
 
@@ -344,10 +382,11 @@ class BackupRestoreService {
       final existingCats = await _db.select(_db.categories).get();
       final catMap = {for (var c in existingCats) c.name: c.id};
 
-      // 2. Clear old transactions and debts
+      // 2. Clear old transactions, debts, goals
       await _db.delete(_db.transactions).go();
       await _db.delete(_db.debts).go();
       await _db.delete(_db.budgets).go();
+      await _db.delete(_db.goals).go();
 
       // 3. Create Sample Budgets
       if (catMap.containsKey('Food & Dining')) {
@@ -440,6 +479,31 @@ class BackupRestoreService {
               type: 'borrowed',
               notes: const Value('Weekend road trip fuel share'),
               dueDate: Value(now.add(const Duration(days: 14))),
+            ),
+          );
+
+      // 6. Sample Goals (Sinking Funds)
+      await _db.into(_db.goals).insert(
+            GoalsCompanion.insert(
+              id: uuid.v4(),
+              name: 'Emergency Fund',
+              targetAmount: 5000.0,
+              currentAmount: const Value(3200.0),
+              iconName: const Value('favorite'),
+              colorValue: const Value(0xFF10B981),
+              targetDate: Value(now.add(const Duration(days: 180))),
+            ),
+          );
+
+      await _db.into(_db.goals).insert(
+            GoalsCompanion.insert(
+              id: uuid.v4(),
+              name: 'New MacBook Pro',
+              targetAmount: 2000.0,
+              currentAmount: const Value(1250.0),
+              iconName: const Value('laptop'),
+              colorValue: const Value(0xFF3B82F6),
+              targetDate: Value(now.add(const Duration(days: 90))),
             ),
           );
     });

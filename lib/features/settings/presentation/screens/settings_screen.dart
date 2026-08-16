@@ -8,6 +8,7 @@ import '../../../accounts/presentation/screens/accounts_screen.dart';
 import '../../../backup/presentation/screens/backup_screen.dart';
 import '../../../budgets/presentation/screens/budgets_screen.dart';
 import '../../../debts/presentation/screens/debts_screen.dart';
+import '../../../goals/presentation/screens/goals_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -114,6 +115,15 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.handshake_outlined,
                 iconColor: AppColors.secondary,
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DebtsScreen())),
+              ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Savings & Sinking Goals',
+                subtitle: 'Track milestone targets, vacations & funds',
+                icon: Icons.savings_outlined,
+                iconColor: const Color(0xFF10B981),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GoalsScreen())),
               ),
 
               const SizedBox(height: 24),

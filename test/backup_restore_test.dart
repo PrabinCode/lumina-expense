@@ -28,5 +28,8 @@ void main() {
 
     final debts = await db.select(db.debts).get();
     expect(debts.length, 2);
+
+    final goals = await db.select(db.goals).get();
+    expect(goals.length, 2);
   });
 }
