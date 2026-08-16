@@ -15,15 +15,107 @@ class BackupScreen extends ConsumerStatefulWidget {
 class _BackupScreenState extends ConsumerState<BackupScreen> {
   bool _isLoading = false;
 
+  Future<String?> _promptSaveLocation(String title) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.folder_open_rounded, color: AppColors.primary, size: 22),
+                  ),
+                  title: const Text('Choose Custom Folder...', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  subtitle: const Text('Select any directory or SD card location', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  onTap: () async {
+                    Navigator.pop(context, 'custom');
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.download_rounded, color: Color(0xFF10B981), size: 22),
+                  ),
+                  title: const Text('Save to Downloads Folder', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  subtitle: const Text('Default system Download directory', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  onTap: () {
+                    Navigator.pop(context, 'downloads');
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _handleSaveBackupToDevice() async {
+    final choice = await _promptSaveLocation('Save Backup (JSON)');
+    if (choice == null) return;
+
+    String? customPath;
+    if (choice == 'custom') {
+      customPath = await ref.read(backupRestoreServiceProvider).pickTargetDirectory();
+      if (customPath == null) return; // User cancelled directory picker
+    }
+
     setState(() => _isLoading = true);
     try {
-      final path = await ref.read(backupRestoreServiceProvider).saveBackupToDeviceStorage();
+      final path = await ref.read(backupRestoreServiceProvider).saveBackupToDeviceStorage(
+            customFolderPath: customPath,
+          );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Backup saved successfully to: $path'),
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {},
+            ),
           ),
         );
       }
@@ -54,14 +146,29 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   }
 
   Future<void> _handleSaveCsvToDevice() async {
+    final choice = await _promptSaveLocation('Save Transactions CSV');
+    if (choice == null) return;
+
+    String? customPath;
+    if (choice == 'custom') {
+      customPath = await ref.read(backupRestoreServiceProvider).pickTargetDirectory();
+      if (customPath == null) return; // User cancelled directory picker
+    }
+
     setState(() => _isLoading = true);
     try {
-      final path = await ref.read(backupRestoreServiceProvider).saveCsvToDeviceStorage();
+      final path = await ref.read(backupRestoreServiceProvider).saveCsvToDeviceStorage(
+            customFolderPath: customPath,
+          );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('CSV saved successfully to: $path'),
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {},
+            ),
           ),
         );
       }

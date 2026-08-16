@@ -182,8 +182,30 @@ class BackupRestoreService {
     return filePath;
   }
 
-  /// 1b. Save Backup (JSON) directly to device Documents / Downloads storage
-  Future<String> saveBackupToDeviceStorage() async {
+  /// Helper to get standard user-accessible Downloads or Documents directory
+  Future<Directory> getDefaultDownloadDirectory() async {
+    if (Platform.isAndroid) {
+      final downloadDir = Directory('/storage/emulated/0/Download');
+      if (await downloadDir.exists()) {
+        return downloadDir;
+      }
+      final documentsDir = Directory('/storage/emulated/0/Documents');
+      if (await documentsDir.exists()) {
+        return documentsDir;
+      }
+    }
+    return await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+  }
+
+  /// Let user choose a custom destination directory using system file picker
+  Future<String?> pickTargetDirectory() async {
+    return await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Select Folder to Save File',
+    );
+  }
+
+  /// 1b. Save Backup (JSON) directly to device Documents / Downloads or custom folder
+  Future<String> saveBackupToDeviceStorage({String? customFolderPath}) async {
     final categories = await _db.select(_db.categories).get();
     final accounts = await _db.select(_db.accounts).get();
     final transactions = await _db.select(_db.transactions).get();
@@ -194,7 +216,7 @@ class BackupRestoreService {
     final splits = await _db.select(_db.transactionSplits).get();
 
     final backupPayload = {
-      'version': 2,
+      'version': 4,
       'appName': 'LuminaExpense',
       'exportDate': DateTime.now().toIso8601String(),
       'data': {
@@ -210,7 +232,17 @@ class BackupRestoreService {
     };
 
     final jsonString = const JsonEncoder.withIndent('  ').convert(backupPayload);
-    final targetDir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+    Directory targetDir;
+    if (customFolderPath != null && customFolderPath.trim().isNotEmpty) {
+      targetDir = Directory(customFolderPath.trim());
+    } else {
+      targetDir = await getDefaultDownloadDirectory();
+    }
+
+    if (!await targetDir.exists()) {
+      await targetDir.create(recursive: true);
+    }
+
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final filePath = '${targetDir.path}/lumina_backup_$timestamp.json';
 
@@ -275,8 +307,8 @@ class BackupRestoreService {
     return filePath;
   }
 
-  /// 2b. Save Transactions CSV directly to device storage
-  Future<String> saveCsvToDeviceStorage() async {
+  /// 2b. Save Transactions CSV directly to device storage or custom folder
+  Future<String> saveCsvToDeviceStorage({String? customFolderPath}) async {
     final cat = _db.categories;
     final srcAcc = _db.alias(_db.accounts, 'src');
     final dstAcc = _db.alias(_db.accounts, 'dst');
@@ -315,7 +347,17 @@ class BackupRestoreService {
     }
 
     final csvString = const ListToCsvConverter().convert(csvData);
-    final targetDir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+    Directory targetDir;
+    if (customFolderPath != null && customFolderPath.trim().isNotEmpty) {
+      targetDir = Directory(customFolderPath.trim());
+    } else {
+      targetDir = await getDefaultDownloadDirectory();
+    }
+
+    if (!await targetDir.exists()) {
+      await targetDir.create(recursive: true);
+    }
+
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final filePath = '${targetDir.path}/transactions_$timestamp.csv';
 
