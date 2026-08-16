@@ -51,9 +51,10 @@ class BackupRestoreService {
     final debts = await _db.select(_db.debts).get();
     final goals = await _db.select(_db.goals).get();
     final splits = await _db.select(_db.transactionSplits).get();
+    final subscriptions = await _db.select(_db.recurringTransactions).get();
 
     final backupPayload = {
-      'version': 3,
+      'version': 4,
       'appName': 'LuminaExpense',
       'exportDate': DateTime.now().toIso8601String(),
       'data': {
@@ -142,6 +143,22 @@ class BackupRestoreService {
                   'notes': g.notes,
                   'isCompleted': g.isCompleted,
                   'createdAt': g.createdAt.toIso8601String(),
+                })
+            .toList(),
+        'recurringTransactions': subscriptions
+            .map((s) => {
+                  'id': s.id,
+                  'title': s.title,
+                  'amount': s.amount,
+                  'categoryId': s.categoryId,
+                  'accountId': s.accountId,
+                  'frequency': s.frequency,
+                  'interval': s.interval,
+                  'nextDueDate': s.nextDueDate.toIso8601String(),
+                  'autoLog': s.autoLog,
+                  'isActive': s.isActive,
+                  'notes': s.notes,
+                  'createdAt': s.createdAt.toIso8601String(),
                 })
             .toList(),
       }
@@ -267,6 +284,7 @@ class BackupRestoreService {
 
     await _db.transaction(() async {
       // 1. Clear existing data
+      await _db.delete(_db.recurringTransactions).go();
       await _db.delete(_db.transactionSplits).go();
       await _db.delete(_db.transactions).go();
       await _db.delete(_db.debts).go();
@@ -396,6 +414,27 @@ class BackupRestoreService {
               ),
             );
       }
+
+      // 9. Insert Recurring Transactions (Subscriptions)
+      final recurringList = (data['recurringTransactions'] as List? ?? []);
+      for (final r in recurringList) {
+        await _db.into(_db.recurringTransactions).insert(
+              RecurringTransactionsCompanion.insert(
+                id: r['id'],
+                title: r['title'],
+                amount: (r['amount'] as num).toDouble(),
+                categoryId: r['categoryId'],
+                accountId: r['accountId'],
+                frequency: Value(r['frequency'] ?? 'monthly'),
+                interval: Value(r['interval'] ?? 1),
+                nextDueDate: DateTime.tryParse(r['nextDueDate'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
+                autoLog: Value(r['autoLog'] ?? false),
+                isActive: Value(r['isActive'] ?? true),
+                notes: Value(r['notes']),
+                createdAt: Value(DateTime.tryParse(r['createdAt'] ?? '') ?? DateTime.now()),
+              ),
+            );
+      }
     });
   }
 
@@ -409,7 +448,8 @@ class BackupRestoreService {
       final existingCats = await _db.select(_db.categories).get();
       final catMap = {for (var c in existingCats) c.name: c.id};
 
-      // 2. Clear old transactions, splits, debts, goals
+      // 2. Clear old transactions, splits, debts, goals, recurring
+      await _db.delete(_db.recurringTransactions).go();
       await _db.delete(_db.transactionSplits).go();
       await _db.delete(_db.transactions).go();
       await _db.delete(_db.debts).go();
@@ -575,6 +615,56 @@ class BackupRestoreService {
               targetDate: Value(now.add(const Duration(days: 90))),
             ),
           );
+
+      // 7. Sample Recurring Subscriptions & Bills
+      final entertainmentCatId = catMap['Entertainment'];
+      final billsCatId = catMap['Bills & Utilities'];
+
+      if (entertainmentCatId != null) {
+        await _db.into(_db.recurringTransactions).insert(
+              RecurringTransactionsCompanion.insert(
+                id: uuid.v4(),
+                title: 'Netflix Premium 4K',
+                amount: 22.99,
+                categoryId: entertainmentCatId,
+                accountId: bankAcc,
+                frequency: const Value('monthly'),
+                nextDueDate: now.add(const Duration(days: 4)),
+                autoLog: const Value(true),
+                notes: const Value('Family subscription'),
+              ),
+            );
+
+        await _db.into(_db.recurringTransactions).insert(
+              RecurringTransactionsCompanion.insert(
+                id: uuid.v4(),
+                title: 'Spotify Duo',
+                amount: 14.99,
+                categoryId: entertainmentCatId,
+                accountId: bankAcc,
+                frequency: const Value('monthly'),
+                nextDueDate: now.add(const Duration(days: 12)),
+                autoLog: const Value(false),
+                notes: const Value('Music streaming'),
+              ),
+            );
+      }
+
+      if (billsCatId != null) {
+        await _db.into(_db.recurringTransactions).insert(
+              RecurringTransactionsCompanion.insert(
+                id: uuid.v4(),
+                title: 'Gigabit Fiber Internet',
+                amount: 70.00,
+                categoryId: billsCatId,
+                accountId: bankAcc,
+                frequency: const Value('monthly'),
+                nextDueDate: now.add(const Duration(days: 18)),
+                autoLog: const Value(true),
+                notes: const Value('Home fiber broadband bill'),
+              ),
+            );
+      }
     });
   }
 }

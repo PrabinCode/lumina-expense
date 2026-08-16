@@ -9,6 +9,7 @@ import '../../../backup/presentation/screens/backup_screen.dart';
 import '../../../budgets/presentation/screens/budgets_screen.dart';
 import '../../../debts/presentation/screens/debts_screen.dart';
 import '../../../goals/presentation/screens/goals_screen.dart';
+import '../../../subscriptions/presentation/screens/subscriptions_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -124,6 +125,15 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.savings_outlined,
                 iconColor: const Color(0xFF10B981),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GoalsScreen())),
+              ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Subscriptions & Bills',
+                subtitle: 'Track recurring commitments and monthly burn',
+                icon: Icons.subscriptions_outlined,
+                iconColor: const Color(0xFF3B82F6),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsScreen())),
               ),
 
               const SizedBox(height: 24),

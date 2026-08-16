@@ -9,6 +9,8 @@ import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
 import 'features/transactions/presentation/screens/add_transaction_sheet.dart';
 
+import 'features/subscriptions/data/subscription_repository.dart';
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(
@@ -55,14 +57,14 @@ class LuminaExpenseApp extends ConsumerWidget {
   }
 }
 
-class MainNavigationShell extends StatefulWidget {
+class MainNavigationShell extends ConsumerStatefulWidget {
   const MainNavigationShell({super.key});
 
   @override
-  State<MainNavigationShell> createState() => _MainNavigationShellState();
+  ConsumerState<MainNavigationShell> createState() => _MainNavigationShellState();
 }
 
-class _MainNavigationShellState extends State<MainNavigationShell> {
+class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   int _currentIndex = 0;
 
   final List<Widget> _screens = const [
@@ -71,6 +73,15 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
     BudgetsScreen(),
     SettingsScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Catch-up on any past-due subscriptions with auto-log enabled
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(subscriptionRepositoryProvider).processAutoLogCatchUp();
+    });
+  }
 
   void _openAddTransaction(BuildContext context) {
     showModalBottomSheet(

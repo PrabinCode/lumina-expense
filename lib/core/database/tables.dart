@@ -111,3 +111,23 @@ class Goals extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Subscriptions & Recurring Transactions Table
+class RecurringTransactions extends Table {
+  TextColumn get id => text()();
+  TextColumn get title => text().withLength(min: 1, max: 100)();
+  RealColumn get amount => real()();
+  TextColumn get categoryId => text().references(Categories, #id)();
+  TextColumn get accountId => text().references(Accounts, #id)();
+  TextColumn get frequency => text().withDefault(const Constant('monthly'))(); // 'daily', 'weekly', 'monthly', 'yearly'
+  IntColumn get interval => integer().withDefault(const Constant(1))();
+  DateTimeColumn get nextDueDate => dateTime()();
+  BoolColumn get autoLog => boolean().withDefault(const Constant(false))();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  TextColumn get notes => text().nullable()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+
