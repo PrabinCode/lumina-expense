@@ -10,6 +10,103 @@ import '../../../transactions/data/transaction_repository.dart';
 class RecentTransactionsList extends ConsumerWidget {
   const RecentTransactionsList({super.key});
 
+  void _showTransactionDetails(BuildContext context, TransactionWithDetails item) {
+    final tx = item.transaction;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      tx.title,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  Text(
+                    CurrencyFormatter.format(tx.amount),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: tx.type == 'income'
+                          ? AppColors.income
+                          : (tx.type == 'expense' ? AppColors.expense : AppColors.transfer),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${DateFormat('EEEE, MMMM d, yyyy').format(tx.date)} • ${item.account.name}',
+                style: const TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              if (tx.note != null && tx.note!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text('Note: ${tx.note!}', style: const TextStyle(fontSize: 13)),
+              ],
+              if (tx.isSplit && item.splits.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Itemized Category Splits:',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    children: item.splits.map((s) {
+                      final c = s.category;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            Icon(IconHelper.getIcon(c.icon), size: 16, color: Color(c.color)),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(c.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+                            Text(CurrencyFormatter.format(s.split.amount), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 24),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final transactionsAsync = ref.watch(recentTransactionsStreamProvider);
@@ -89,7 +186,12 @@ class RecentTransactionsList extends ConsumerWidget {
                 IconData icon;
                 Color iconColor;
 
-                if (tx.type == 'income') {
+                if (tx.isSplit) {
+                  amountColor = AppColors.expense;
+                  prefix = '-';
+                  icon = Icons.call_split_rounded;
+                  iconColor = AppColors.warning;
+                } else if (tx.type == 'income') {
                   amountColor = AppColors.income;
                   prefix = '+';
                   icon = IconHelper.getIcon(cat?.icon ?? 'payments');
@@ -124,77 +226,105 @@ class RecentTransactionsList extends ConsumerWidget {
                       SnackBar(content: Text('Deleted "${tx.title}"')),
                     );
                   },
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                  child: Material(
+                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                    borderRadius: BorderRadius.circular(16),
+                    child: InkWell(
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: iconColor.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(12),
+                      onTap: () => _showTransactionDetails(context, item),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
                           ),
-                          child: Icon(icon, color: iconColor, size: 22),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                tx.title,
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: iconColor.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              const SizedBox(height: 2),
-                              Row(
+                              child: Icon(icon, color: iconColor, size: 22),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    item.account.name,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                    ),
-                                  ),
-                                  if (item.toAccount != null) ...[
-                                    Text(
-                                      ' → ${item.toAccount!.name}',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          tx.title,
+                                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '•  ${DateFormat('MMM d').format(tx.date)}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                    ),
+                                      if (tx.isSplit) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.warning.withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            'Split (${item.splits.length})',
+                                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.warning),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        item.account.name,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                        ),
+                                      ),
+                                      if (item.toAccount != null) ...[
+                                        Text(
+                                          ' → ${item.toAccount!.name}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '•  ${DateFormat('MMM d').format(tx.date)}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '$prefix${CurrencyFormatter.format(tx.amount)}',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: amountColor,
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          '$prefix${CurrencyFormatter.format(tx.amount)}',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: amountColor,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 );

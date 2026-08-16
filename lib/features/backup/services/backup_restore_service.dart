@@ -50,9 +50,10 @@ class BackupRestoreService {
     final budgets = await _db.select(_db.budgets).get();
     final debts = await _db.select(_db.debts).get();
     final goals = await _db.select(_db.goals).get();
+    final splits = await _db.select(_db.transactionSplits).get();
 
     final backupPayload = {
-      'version': 2,
+      'version': 3,
       'appName': 'LuminaExpense',
       'exportDate': DateTime.now().toIso8601String(),
       'data': {
@@ -93,7 +94,17 @@ class BackupRestoreService {
                   'note': t.note,
                   'tags': t.tags,
                   'receiptPath': t.receiptPath,
+                  'isSplit': t.isSplit,
                   'createdAt': t.createdAt.toIso8601String(),
+                })
+            .toList(),
+        'transactionSplits': splits
+            .map((s) => {
+                  'id': s.id,
+                  'transactionId': s.transactionId,
+                  'categoryId': s.categoryId,
+                  'amount': s.amount,
+                  'note': s.note,
                 })
             .toList(),
         'budgets': budgets
@@ -256,6 +267,7 @@ class BackupRestoreService {
 
     await _db.transaction(() async {
       // 1. Clear existing data
+      await _db.delete(_db.transactionSplits).go();
       await _db.delete(_db.transactions).go();
       await _db.delete(_db.debts).go();
       await _db.delete(_db.budgets).go();
@@ -313,12 +325,27 @@ class BackupRestoreService {
                 note: Value(t['note']),
                 tags: Value(t['tags']),
                 receiptPath: Value(t['receiptPath']),
+                isSplit: Value(t['isSplit'] ?? false),
                 createdAt: Value(DateTime.tryParse(t['createdAt'] ?? '') ?? DateTime.now()),
               ),
             );
       }
 
-      // 5. Insert Budgets
+      // 5. Insert Transaction Splits
+      final splitsList = (data['transactionSplits'] as List? ?? []);
+      for (final s in splitsList) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: s['id'],
+                transactionId: s['transactionId'],
+                categoryId: s['categoryId'],
+                amount: (s['amount'] as num).toDouble(),
+                note: Value(s['note']),
+              ),
+            );
+      }
+
+      // 6. Insert Budgets
       final budgetsList = (data['budgets'] as List? ?? []);
       for (final b in budgetsList) {
         await _db.into(_db.budgets).insert(
@@ -332,7 +359,7 @@ class BackupRestoreService {
             );
       }
 
-      // 6. Insert Debts
+      // 7. Insert Debts
       final debtsList = (data['debts'] as List? ?? []);
       for (final d in debtsList) {
         await _db.into(_db.debts).insert(
@@ -351,7 +378,7 @@ class BackupRestoreService {
             );
       }
 
-      // 7. Insert Goals
+      // 8. Insert Goals
       final goalsList = (data['goals'] as List? ?? []);
       for (final g in goalsList) {
         await _db.into(_db.goals).insert(
@@ -382,7 +409,8 @@ class BackupRestoreService {
       final existingCats = await _db.select(_db.categories).get();
       final catMap = {for (var c in existingCats) c.name: c.id};
 
-      // 2. Clear old transactions, debts, goals
+      // 2. Clear old transactions, splits, debts, goals
+      await _db.delete(_db.transactionSplits).go();
       await _db.delete(_db.transactions).go();
       await _db.delete(_db.debts).go();
       await _db.delete(_db.budgets).go();
@@ -453,6 +481,47 @@ class BackupRestoreService {
                 categoryId: Value(categoryId),
                 accountId: targetAcc,
                 date: Value(now.subtract(Duration(days: item.daysAgo))),
+              ),
+            );
+      }
+
+      // 4b. Sample Split Transaction (e.g. Costco Superstore Trip)
+      final splitTxId = uuid.v4();
+      final groceriesCatId = catMap['Groceries'];
+      final diningCatId = catMap['Food & Dining'];
+
+      await _db.into(_db.transactions).insert(
+            TransactionsCompanion.insert(
+              id: splitTxId,
+              title: 'Costco Superstore & Food Court',
+              amount: 120.0,
+              type: 'expense',
+              accountId: bankAcc,
+              isSplit: const Value(true),
+              date: Value(now.subtract(const Duration(days: 3))),
+            ),
+          );
+
+      if (groceriesCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTxId,
+                categoryId: groceriesCatId,
+                amount: 85.0,
+                note: const Value('Pantry & Bulk Groceries'),
+              ),
+            );
+      }
+
+      if (diningCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTxId,
+                categoryId: diningCatId,
+                amount: 35.0,
+                note: const Value('Food Court Pizza & Drinks'),
               ),
             );
       }

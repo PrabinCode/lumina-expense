@@ -3,17 +3,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
 
+class TransactionSplitWithCategory {
+  final TransactionSplit split;
+  final Category category;
+
+  TransactionSplitWithCategory({
+    required this.split,
+    required this.category,
+  });
+}
+
 class TransactionWithDetails {
   final Transaction transaction;
   final Category? category;
   final Account account;
   final Account? toAccount;
+  final List<TransactionSplitWithCategory> splits;
 
   TransactionWithDetails({
     required this.transaction,
     this.category,
     required this.account,
     this.toAccount,
+    this.splits = const [],
   });
 }
 
@@ -46,7 +58,7 @@ class TransactionRepository {
 
   TransactionRepository(this._db);
 
-  /// Watch transactions joined with Account and Category
+  /// Watch transactions joined with Account, Category, and Splits
   Stream<List<TransactionWithDetails>> watchTransactionsWithDetails({
     DateTime? startDate,
     DateTime? endDate,
@@ -100,15 +112,24 @@ class TransactionRepository {
       query.limit(limit);
     }
 
-    return query.watch().map((rows) {
-      return rows.map((row) {
-        return TransactionWithDetails(
-          transaction: row.readTable(_db.transactions),
+    return query.watch().asyncMap((rows) async {
+      final list = <TransactionWithDetails>[];
+      for (final row in rows) {
+        final tx = row.readTable(_db.transactions);
+        List<TransactionSplitWithCategory> splits = [];
+        if (tx.isSplit) {
+          splits = await getSplitsForTransaction(tx.id);
+        }
+
+        list.add(TransactionWithDetails(
+          transaction: tx,
           category: row.readTableOrNull(cat),
           account: row.readTable(srcAcc),
           toAccount: row.readTableOrNull(dstAcc),
-        );
-      }).toList();
+          splits: splits,
+        ));
+      }
+      return list;
     });
   }
 
@@ -116,12 +137,63 @@ class TransactionRepository {
     return _db.into(_db.transactions).insert(tx);
   }
 
+  /// Create a transaction and its splits atomically
+  Future<void> createTransactionWithSplits(
+    TransactionsCompanion tx,
+    List<TransactionSplitsCompanion> splits,
+  ) async {
+    await _db.transaction(() async {
+      await _db.into(_db.transactions).insert(tx);
+      for (final split in splits) {
+        await _db.into(_db.transactionSplits).insert(split);
+      }
+    });
+  }
+
   Future<bool> updateTransaction(TransactionsCompanion tx) {
     return _db.update(_db.transactions).replace(tx);
   }
 
   Future<int> deleteTransaction(String id) {
-    return (_db.delete(_db.transactions)..where((tbl) => tbl.id.equals(id))).go();
+    return _db.transaction(() async {
+      await (_db.delete(_db.transactionSplits)..where((tbl) => tbl.transactionId.equals(id))).go();
+      return (_db.delete(_db.transactions)..where((tbl) => tbl.id.equals(id))).go();
+    });
+  }
+
+  Future<List<TransactionSplitWithCategory>> getSplitsForTransaction(String transactionId) async {
+    final cat = _db.categories;
+    final sp = _db.transactionSplits;
+
+    final query = _db.select(sp).join([
+      innerJoin(cat, cat.id.equalsExp(sp.categoryId)),
+    ])..where(sp.transactionId.equals(transactionId));
+
+    final rows = await query.get();
+    return rows.map((r) {
+      return TransactionSplitWithCategory(
+        split: r.readTable(sp),
+        category: r.readTable(cat),
+      );
+    }).toList();
+  }
+
+  Stream<List<TransactionSplitWithCategory>> watchSplitsForTransaction(String transactionId) {
+    final cat = _db.categories;
+    final sp = _db.transactionSplits;
+
+    final query = _db.select(sp).join([
+      innerJoin(cat, cat.id.equalsExp(sp.categoryId)),
+    ])..where(sp.transactionId.equals(transactionId));
+
+    return query.watch().map((rows) {
+      return rows.map((r) {
+        return TransactionSplitWithCategory(
+          split: r.readTable(sp),
+          category: r.readTable(cat),
+        );
+      }).toList();
+    });
   }
 
   /// Watch financial summary for a specific date range
@@ -147,32 +219,38 @@ class TransactionRepository {
     });
   }
 
-  /// Watch category spending breakdown
+  /// Watch category spending breakdown, aggregating both direct and split transactions
   Stream<List<CategorySpending>> watchCategorySpending(DateTime startDate, DateTime endDate) {
     final cat = _db.categories;
     final tx = _db.transactions;
+    final sp = _db.transactionSplits;
 
-    final query = _db.select(tx).join([
-      innerJoin(cat, cat.id.equalsExp(tx.categoryId)),
-    ])
-      ..where(tx.type.equals('expense') &
-          tx.date.isBiggerOrEqualValue(startDate) &
-          tx.date.isSmallerOrEqualValue(endDate));
+    // We watch transactions and splits to trigger on updates
+    final txQuery = _db.select(tx)
+      ..where((t) =>
+          t.type.equals('expense') &
+          t.date.isBiggerOrEqualValue(startDate) &
+          t.date.isSmallerOrEqualValue(endDate));
 
-    return query.watch().map((rows) {
-      final categoryMap = <String, Category>{};
+    return txQuery.watch().asyncMap((expenseTxs) async {
+      final allCategories = await _db.select(cat).get();
+      final categoryMap = {for (var c in allCategories) c.id: c};
       final amounts = <String, double>{};
       double totalExpense = 0;
 
-      for (final row in rows) {
-        final c = row.readTable(cat);
-        final t = row.readTable(tx);
-        categoryMap[c.id] = c;
-        amounts[c.id] = (amounts[c.id] ?? 0.0) + t.amount;
+      for (final t in expenseTxs) {
         totalExpense += t.amount;
+        if (t.isSplit) {
+          final splits = await (_db.select(sp)..where((s) => s.transactionId.equals(t.id))).get();
+          for (final s in splits) {
+            amounts[s.categoryId] = (amounts[s.categoryId] ?? 0.0) + s.amount;
+          }
+        } else if (t.categoryId != null) {
+          amounts[t.categoryId!] = (amounts[t.categoryId!] ?? 0.0) + t.amount;
+        }
       }
 
-      final results = amounts.entries.map((e) {
+      final results = amounts.entries.where((e) => categoryMap.containsKey(e.key)).map((e) {
         final category = categoryMap[e.key]!;
         final amount = e.value;
         final percentage = totalExpense > 0 ? (amount / totalExpense) * 100 : 0.0;

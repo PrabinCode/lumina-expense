@@ -46,7 +46,20 @@ class Transactions extends Table {
   TextColumn get note => text().nullable()();
   TextColumn get tags => text().nullable()(); // Comma-separated tags
   TextColumn get receiptPath => text().nullable()();
+  BoolColumn get isSplit => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Transaction Splits Table (Subcategory / Item breakdown for a single transaction)
+class TransactionSplits extends Table {
+  TextColumn get id => text()();
+  TextColumn get transactionId => text().references(Transactions, #id, onDelete: KeyAction.cascade)();
+  TextColumn get categoryId => text().references(Categories, #id)();
+  RealColumn get amount => real()();
+  TextColumn get note => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

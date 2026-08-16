@@ -6,12 +6,12 @@ import 'tables.dart';
 
 part 'app_database.g.dart';
 
-@DriftDatabase(tables: [Accounts, Categories, Transactions, Budgets, Debts, Goals])
+@DriftDatabase(tables: [Accounts, Categories, Transactions, Budgets, Debts, Goals, TransactionSplits])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? e]) : super(e ?? _openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   static QueryExecutor _openConnection() {
     return driftDatabase(
@@ -71,6 +71,10 @@ class AppDatabase extends _$AppDatabase {
         onUpgrade: (m, from, to) async {
           if (from < 2) {
             await m.createTable(goals);
+          }
+          if (from < 3) {
+            await m.addColumn(transactions, transactions.isSplit);
+            await m.createTable(transactionSplits);
           }
         },
       );

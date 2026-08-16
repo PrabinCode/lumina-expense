@@ -44,16 +44,30 @@ class BudgetRepository {
         final budget = row.readTable(b);
         final category = row.readTable(cat);
 
-        // Compute spent in this month for this category
-        final transactions = await (_db.select(_db.transactions)
+        // Compute spent in this month for this category (direct transactions + split items)
+        final directTxs = await (_db.select(_db.transactions)
               ..where((t) =>
                   t.categoryId.equals(category.id) &
                   t.type.equals('expense') &
+                  t.isSplit.equals(false) &
                   t.date.isBiggerOrEqualValue(startOfMonth) &
                   t.date.isSmallerOrEqualValue(endOfMonth)))
             .get();
 
-        final spent = transactions.fold<double>(0.0, (sum, t) => sum + t.amount);
+        final splitItems = await (_db.select(_db.transactionSplits).join([
+          innerJoin(_db.transactions, _db.transactions.id.equalsExp(_db.transactionSplits.transactionId)),
+        ])
+              ..where(_db.transactionSplits.categoryId.equals(category.id) &
+                  _db.transactions.type.equals('expense') &
+                  _db.transactions.date.isBiggerOrEqualValue(startOfMonth) &
+                  _db.transactions.date.isSmallerOrEqualValue(endOfMonth)))
+            .get();
+
+        double spent = directTxs.fold<double>(0.0, (sum, t) => sum + t.amount);
+        for (final row in splitItems) {
+          spent += row.readTable(_db.transactionSplits).amount;
+        }
+
         final percentage = budget.amountLimit > 0 ? (spent / budget.amountLimit) * 100 : 0.0;
 
         results.add(BudgetWithProgress(

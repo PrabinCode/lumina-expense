@@ -1141,6 +1141,21 @@ class $TransactionsTable extends Transactions
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _isSplitMeta = const VerificationMeta(
+    'isSplit',
+  );
+  @override
+  late final GeneratedColumn<bool> isSplit = GeneratedColumn<bool>(
+    'is_split',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_split" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1166,6 +1181,7 @@ class $TransactionsTable extends Transactions
     note,
     tags,
     receiptPath,
+    isSplit,
     createdAt,
   ];
   @override
@@ -1259,6 +1275,12 @@ class $TransactionsTable extends Transactions
         ),
       );
     }
+    if (data.containsKey('is_split')) {
+      context.handle(
+        _isSplitMeta,
+        isSplit.isAcceptableOrUnknown(data['is_split']!, _isSplitMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -1318,6 +1340,10 @@ class $TransactionsTable extends Transactions
         DriftSqlType.string,
         data['${effectivePrefix}receipt_path'],
       ),
+      isSplit: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_split'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -1343,6 +1369,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
   final String? note;
   final String? tags;
   final String? receiptPath;
+  final bool isSplit;
   final DateTime createdAt;
   const Transaction({
     required this.id,
@@ -1356,6 +1383,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     this.note,
     this.tags,
     this.receiptPath,
+    required this.isSplit,
     required this.createdAt,
   });
   @override
@@ -1382,6 +1410,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     if (!nullToAbsent || receiptPath != null) {
       map['receipt_path'] = Variable<String>(receiptPath);
     }
+    map['is_split'] = Variable<bool>(isSplit);
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -1405,6 +1434,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       receiptPath: receiptPath == null && nullToAbsent
           ? const Value.absent()
           : Value(receiptPath),
+      isSplit: Value(isSplit),
       createdAt: Value(createdAt),
     );
   }
@@ -1426,6 +1456,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       note: serializer.fromJson<String?>(json['note']),
       tags: serializer.fromJson<String?>(json['tags']),
       receiptPath: serializer.fromJson<String?>(json['receiptPath']),
+      isSplit: serializer.fromJson<bool>(json['isSplit']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -1444,6 +1475,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       'note': serializer.toJson<String?>(note),
       'tags': serializer.toJson<String?>(tags),
       'receiptPath': serializer.toJson<String?>(receiptPath),
+      'isSplit': serializer.toJson<bool>(isSplit),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -1460,6 +1492,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     Value<String?> note = const Value.absent(),
     Value<String?> tags = const Value.absent(),
     Value<String?> receiptPath = const Value.absent(),
+    bool? isSplit,
     DateTime? createdAt,
   }) => Transaction(
     id: id ?? this.id,
@@ -1473,6 +1506,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     note: note.present ? note.value : this.note,
     tags: tags.present ? tags.value : this.tags,
     receiptPath: receiptPath.present ? receiptPath.value : this.receiptPath,
+    isSplit: isSplit ?? this.isSplit,
     createdAt: createdAt ?? this.createdAt,
   );
   Transaction copyWithCompanion(TransactionsCompanion data) {
@@ -1494,6 +1528,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       receiptPath: data.receiptPath.present
           ? data.receiptPath.value
           : this.receiptPath,
+      isSplit: data.isSplit.present ? data.isSplit.value : this.isSplit,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -1512,6 +1547,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           ..write('note: $note, ')
           ..write('tags: $tags, ')
           ..write('receiptPath: $receiptPath, ')
+          ..write('isSplit: $isSplit, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -1530,6 +1566,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     note,
     tags,
     receiptPath,
+    isSplit,
     createdAt,
   );
   @override
@@ -1547,6 +1584,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           other.note == this.note &&
           other.tags == this.tags &&
           other.receiptPath == this.receiptPath &&
+          other.isSplit == this.isSplit &&
           other.createdAt == this.createdAt);
 }
 
@@ -1562,6 +1600,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
   final Value<String?> note;
   final Value<String?> tags;
   final Value<String?> receiptPath;
+  final Value<bool> isSplit;
   final Value<DateTime> createdAt;
   final Value<int> rowid;
   const TransactionsCompanion({
@@ -1576,6 +1615,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.note = const Value.absent(),
     this.tags = const Value.absent(),
     this.receiptPath = const Value.absent(),
+    this.isSplit = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1591,6 +1631,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.note = const Value.absent(),
     this.tags = const Value.absent(),
     this.receiptPath = const Value.absent(),
+    this.isSplit = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -1610,6 +1651,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Expression<String>? note,
     Expression<String>? tags,
     Expression<String>? receiptPath,
+    Expression<bool>? isSplit,
     Expression<DateTime>? createdAt,
     Expression<int>? rowid,
   }) {
@@ -1625,6 +1667,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       if (note != null) 'note': note,
       if (tags != null) 'tags': tags,
       if (receiptPath != null) 'receipt_path': receiptPath,
+      if (isSplit != null) 'is_split': isSplit,
       if (createdAt != null) 'created_at': createdAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1642,6 +1685,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Value<String?>? note,
     Value<String?>? tags,
     Value<String?>? receiptPath,
+    Value<bool>? isSplit,
     Value<DateTime>? createdAt,
     Value<int>? rowid,
   }) {
@@ -1657,6 +1701,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       note: note ?? this.note,
       tags: tags ?? this.tags,
       receiptPath: receiptPath ?? this.receiptPath,
+      isSplit: isSplit ?? this.isSplit,
       createdAt: createdAt ?? this.createdAt,
       rowid: rowid ?? this.rowid,
     );
@@ -1698,6 +1743,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     if (receiptPath.present) {
       map['receipt_path'] = Variable<String>(receiptPath.value);
     }
+    if (isSplit.present) {
+      map['is_split'] = Variable<bool>(isSplit.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1721,6 +1769,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
           ..write('note: $note, ')
           ..write('tags: $tags, ')
           ..write('receiptPath: $receiptPath, ')
+          ..write('isSplit: $isSplit, ')
           ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -3330,6 +3379,377 @@ class GoalsCompanion extends UpdateCompanion<Goal> {
   }
 }
 
+class $TransactionSplitsTable extends TransactionSplits
+    with TableInfo<$TransactionSplitsTable, TransactionSplit> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TransactionSplitsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _transactionIdMeta = const VerificationMeta(
+    'transactionId',
+  );
+  @override
+  late final GeneratedColumn<String> transactionId = GeneratedColumn<String>(
+    'transaction_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES transactions (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _categoryIdMeta = const VerificationMeta(
+    'categoryId',
+  );
+  @override
+  late final GeneratedColumn<String> categoryId = GeneratedColumn<String>(
+    'category_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES categories (id)',
+    ),
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+    'amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    transactionId,
+    categoryId,
+    amount,
+    note,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'transaction_splits';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<TransactionSplit> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('transaction_id')) {
+      context.handle(
+        _transactionIdMeta,
+        transactionId.isAcceptableOrUnknown(
+          data['transaction_id']!,
+          _transactionIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_transactionIdMeta);
+    }
+    if (data.containsKey('category_id')) {
+      context.handle(
+        _categoryIdMeta,
+        categoryId.isAcceptableOrUnknown(data['category_id']!, _categoryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_categoryIdMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  TransactionSplit map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TransactionSplit(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      transactionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}transaction_id'],
+      )!,
+      categoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category_id'],
+      )!,
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}amount'],
+      )!,
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+    );
+  }
+
+  @override
+  $TransactionSplitsTable createAlias(String alias) {
+    return $TransactionSplitsTable(attachedDatabase, alias);
+  }
+}
+
+class TransactionSplit extends DataClass
+    implements Insertable<TransactionSplit> {
+  final String id;
+  final String transactionId;
+  final String categoryId;
+  final double amount;
+  final String? note;
+  const TransactionSplit({
+    required this.id,
+    required this.transactionId,
+    required this.categoryId,
+    required this.amount,
+    this.note,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['transaction_id'] = Variable<String>(transactionId);
+    map['category_id'] = Variable<String>(categoryId);
+    map['amount'] = Variable<double>(amount);
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    return map;
+  }
+
+  TransactionSplitsCompanion toCompanion(bool nullToAbsent) {
+    return TransactionSplitsCompanion(
+      id: Value(id),
+      transactionId: Value(transactionId),
+      categoryId: Value(categoryId),
+      amount: Value(amount),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+    );
+  }
+
+  factory TransactionSplit.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TransactionSplit(
+      id: serializer.fromJson<String>(json['id']),
+      transactionId: serializer.fromJson<String>(json['transactionId']),
+      categoryId: serializer.fromJson<String>(json['categoryId']),
+      amount: serializer.fromJson<double>(json['amount']),
+      note: serializer.fromJson<String?>(json['note']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'transactionId': serializer.toJson<String>(transactionId),
+      'categoryId': serializer.toJson<String>(categoryId),
+      'amount': serializer.toJson<double>(amount),
+      'note': serializer.toJson<String?>(note),
+    };
+  }
+
+  TransactionSplit copyWith({
+    String? id,
+    String? transactionId,
+    String? categoryId,
+    double? amount,
+    Value<String?> note = const Value.absent(),
+  }) => TransactionSplit(
+    id: id ?? this.id,
+    transactionId: transactionId ?? this.transactionId,
+    categoryId: categoryId ?? this.categoryId,
+    amount: amount ?? this.amount,
+    note: note.present ? note.value : this.note,
+  );
+  TransactionSplit copyWithCompanion(TransactionSplitsCompanion data) {
+    return TransactionSplit(
+      id: data.id.present ? data.id.value : this.id,
+      transactionId: data.transactionId.present
+          ? data.transactionId.value
+          : this.transactionId,
+      categoryId: data.categoryId.present
+          ? data.categoryId.value
+          : this.categoryId,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      note: data.note.present ? data.note.value : this.note,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TransactionSplit(')
+          ..write('id: $id, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('amount: $amount, ')
+          ..write('note: $note')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, transactionId, categoryId, amount, note);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TransactionSplit &&
+          other.id == this.id &&
+          other.transactionId == this.transactionId &&
+          other.categoryId == this.categoryId &&
+          other.amount == this.amount &&
+          other.note == this.note);
+}
+
+class TransactionSplitsCompanion extends UpdateCompanion<TransactionSplit> {
+  final Value<String> id;
+  final Value<String> transactionId;
+  final Value<String> categoryId;
+  final Value<double> amount;
+  final Value<String?> note;
+  final Value<int> rowid;
+  const TransactionSplitsCompanion({
+    this.id = const Value.absent(),
+    this.transactionId = const Value.absent(),
+    this.categoryId = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.note = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  TransactionSplitsCompanion.insert({
+    required String id,
+    required String transactionId,
+    required String categoryId,
+    required double amount,
+    this.note = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       transactionId = Value(transactionId),
+       categoryId = Value(categoryId),
+       amount = Value(amount);
+  static Insertable<TransactionSplit> custom({
+    Expression<String>? id,
+    Expression<String>? transactionId,
+    Expression<String>? categoryId,
+    Expression<double>? amount,
+    Expression<String>? note,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (transactionId != null) 'transaction_id': transactionId,
+      if (categoryId != null) 'category_id': categoryId,
+      if (amount != null) 'amount': amount,
+      if (note != null) 'note': note,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  TransactionSplitsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? transactionId,
+    Value<String>? categoryId,
+    Value<double>? amount,
+    Value<String?>? note,
+    Value<int>? rowid,
+  }) {
+    return TransactionSplitsCompanion(
+      id: id ?? this.id,
+      transactionId: transactionId ?? this.transactionId,
+      categoryId: categoryId ?? this.categoryId,
+      amount: amount ?? this.amount,
+      note: note ?? this.note,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (transactionId.present) {
+      map['transaction_id'] = Variable<String>(transactionId.value);
+    }
+    if (categoryId.present) {
+      map['category_id'] = Variable<String>(categoryId.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TransactionSplitsCompanion(')
+          ..write('id: $id, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('amount: $amount, ')
+          ..write('note: $note, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3339,6 +3759,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $BudgetsTable budgets = $BudgetsTable(this);
   late final $DebtsTable debts = $DebtsTable(this);
   late final $GoalsTable goals = $GoalsTable(this);
+  late final $TransactionSplitsTable transactionSplits =
+      $TransactionSplitsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3350,7 +3772,18 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     budgets,
     debts,
     goals,
+    transactionSplits,
   ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'transactions',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('transaction_splits', kind: UpdateKind.delete)],
+    ),
+  ]);
 }
 
 typedef $$AccountsTableCreateCompanionBuilder =
@@ -4004,6 +4437,30 @@ final class $$CategoriesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$TransactionSplitsTable, List<TransactionSplit>>
+  _transactionSplitsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.transactionSplits,
+        aliasName: $_aliasNameGenerator(
+          db.categories.id,
+          db.transactionSplits.categoryId,
+        ),
+      );
+
+  $$TransactionSplitsTableProcessedTableManager get transactionSplitsRefs {
+    final manager = $$TransactionSplitsTableTableManager(
+      $_db,
+      $_db.transactionSplits,
+    ).filter((f) => f.categoryId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _transactionSplitsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$CategoriesTableFilterComposer
@@ -4091,6 +4548,31 @@ class $$CategoriesTableFilterComposer
           }) => $$BudgetsTableFilterComposer(
             $db: $db,
             $table: $db.budgets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> transactionSplitsRefs(
+    Expression<bool> Function($$TransactionSplitsTableFilterComposer f) f,
+  ) {
+    final $$TransactionSplitsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.transactionSplits,
+      getReferencedColumn: (t) => t.categoryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TransactionSplitsTableFilterComposer(
+            $db: $db,
+            $table: $db.transactionSplits,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -4227,6 +4709,32 @@ class $$CategoriesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> transactionSplitsRefs<T extends Object>(
+    Expression<T> Function($$TransactionSplitsTableAnnotationComposer a) f,
+  ) {
+    final $$TransactionSplitsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.transactionSplits,
+          getReferencedColumn: (t) => t.categoryId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$TransactionSplitsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.transactionSplits,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$CategoriesTableTableManager
@@ -4242,7 +4750,11 @@ class $$CategoriesTableTableManager
           $$CategoriesTableUpdateCompanionBuilder,
           (Category, $$CategoriesTableReferences),
           Category,
-          PrefetchHooks Function({bool transactionsRefs, bool budgetsRefs})
+          PrefetchHooks Function({
+            bool transactionsRefs,
+            bool budgetsRefs,
+            bool transactionSplitsRefs,
+          })
         > {
   $$CategoriesTableTableManager(_$AppDatabase db, $CategoriesTable table)
     : super(
@@ -4304,12 +4816,17 @@ class $$CategoriesTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({transactionsRefs = false, budgetsRefs = false}) {
+              ({
+                transactionsRefs = false,
+                budgetsRefs = false,
+                transactionSplitsRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (transactionsRefs) db.transactions,
                     if (budgetsRefs) db.budgets,
+                    if (transactionSplitsRefs) db.transactionSplits,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -4356,6 +4873,27 @@ class $$CategoriesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (transactionSplitsRefs)
+                        await $_getPrefetchedData<
+                          Category,
+                          $CategoriesTable,
+                          TransactionSplit
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CategoriesTableReferences
+                              ._transactionSplitsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CategoriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).transactionSplitsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.categoryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -4376,7 +4914,11 @@ typedef $$CategoriesTableProcessedTableManager =
       $$CategoriesTableUpdateCompanionBuilder,
       (Category, $$CategoriesTableReferences),
       Category,
-      PrefetchHooks Function({bool transactionsRefs, bool budgetsRefs})
+      PrefetchHooks Function({
+        bool transactionsRefs,
+        bool budgetsRefs,
+        bool transactionSplitsRefs,
+      })
     >;
 typedef $$TransactionsTableCreateCompanionBuilder =
     TransactionsCompanion Function({
@@ -4391,6 +4933,7 @@ typedef $$TransactionsTableCreateCompanionBuilder =
       Value<String?> note,
       Value<String?> tags,
       Value<String?> receiptPath,
+      Value<bool> isSplit,
       Value<DateTime> createdAt,
       Value<int> rowid,
     });
@@ -4407,6 +4950,7 @@ typedef $$TransactionsTableUpdateCompanionBuilder =
       Value<String?> note,
       Value<String?> tags,
       Value<String?> receiptPath,
+      Value<bool> isSplit,
       Value<DateTime> createdAt,
       Value<int> rowid,
     });
@@ -4471,6 +5015,30 @@ final class $$TransactionsTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$TransactionSplitsTable, List<TransactionSplit>>
+  _transactionSplitsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.transactionSplits,
+        aliasName: $_aliasNameGenerator(
+          db.transactions.id,
+          db.transactionSplits.transactionId,
+        ),
+      );
+
+  $$TransactionSplitsTableProcessedTableManager get transactionSplitsRefs {
+    final manager = $$TransactionSplitsTableTableManager(
+      $_db,
+      $_db.transactionSplits,
+    ).filter((f) => f.transactionId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _transactionSplitsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$TransactionsTableFilterComposer
@@ -4519,6 +5087,11 @@ class $$TransactionsTableFilterComposer
 
   ColumnFilters<String> get receiptPath => $composableBuilder(
     column: $table.receiptPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isSplit => $composableBuilder(
+    column: $table.isSplit,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4595,6 +5168,31 @@ class $$TransactionsTableFilterComposer
     );
     return composer;
   }
+
+  Expression<bool> transactionSplitsRefs(
+    Expression<bool> Function($$TransactionSplitsTableFilterComposer f) f,
+  ) {
+    final $$TransactionSplitsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.transactionSplits,
+      getReferencedColumn: (t) => t.transactionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TransactionSplitsTableFilterComposer(
+            $db: $db,
+            $table: $db.transactionSplits,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$TransactionsTableOrderingComposer
@@ -4643,6 +5241,11 @@ class $$TransactionsTableOrderingComposer
 
   ColumnOrderings<String> get receiptPath => $composableBuilder(
     column: $table.receiptPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isSplit => $composableBuilder(
+    column: $table.isSplit,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -4756,6 +5359,9 @@ class $$TransactionsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get isSplit =>
+      $composableBuilder(column: $table.isSplit, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -4827,6 +5433,32 @@ class $$TransactionsTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> transactionSplitsRefs<T extends Object>(
+    Expression<T> Function($$TransactionSplitsTableAnnotationComposer a) f,
+  ) {
+    final $$TransactionSplitsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.transactionSplits,
+          getReferencedColumn: (t) => t.transactionId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$TransactionSplitsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.transactionSplits,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$TransactionsTableTableManager
@@ -4846,6 +5478,7 @@ class $$TransactionsTableTableManager
             bool categoryId,
             bool accountId,
             bool toAccountId,
+            bool transactionSplitsRefs,
           })
         > {
   $$TransactionsTableTableManager(_$AppDatabase db, $TransactionsTable table)
@@ -4872,6 +5505,7 @@ class $$TransactionsTableTableManager
                 Value<String?> note = const Value.absent(),
                 Value<String?> tags = const Value.absent(),
                 Value<String?> receiptPath = const Value.absent(),
+                Value<bool> isSplit = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TransactionsCompanion(
@@ -4886,6 +5520,7 @@ class $$TransactionsTableTableManager
                 note: note,
                 tags: tags,
                 receiptPath: receiptPath,
+                isSplit: isSplit,
                 createdAt: createdAt,
                 rowid: rowid,
               ),
@@ -4902,6 +5537,7 @@ class $$TransactionsTableTableManager
                 Value<String?> note = const Value.absent(),
                 Value<String?> tags = const Value.absent(),
                 Value<String?> receiptPath = const Value.absent(),
+                Value<bool> isSplit = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TransactionsCompanion.insert(
@@ -4916,6 +5552,7 @@ class $$TransactionsTableTableManager
                 note: note,
                 tags: tags,
                 receiptPath: receiptPath,
+                isSplit: isSplit,
                 createdAt: createdAt,
                 rowid: rowid,
               ),
@@ -4928,10 +5565,17 @@ class $$TransactionsTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({categoryId = false, accountId = false, toAccountId = false}) {
+              ({
+                categoryId = false,
+                accountId = false,
+                toAccountId = false,
+                transactionSplitsRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
-                  explicitlyWatchedTables: [],
+                  explicitlyWatchedTables: [
+                    if (transactionSplitsRefs) db.transactionSplits,
+                  ],
                   addJoins:
                       <
                         T extends TableManagerState<
@@ -4997,7 +5641,29 @@ class $$TransactionsTableTableManager
                         return state;
                       },
                   getPrefetchedDataCallback: (items) async {
-                    return [];
+                    return [
+                      if (transactionSplitsRefs)
+                        await $_getPrefetchedData<
+                          Transaction,
+                          $TransactionsTable,
+                          TransactionSplit
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TransactionsTableReferences
+                              ._transactionSplitsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TransactionsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).transactionSplitsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.transactionId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
                 );
               },
@@ -5021,6 +5687,7 @@ typedef $$TransactionsTableProcessedTableManager =
         bool categoryId,
         bool accountId,
         bool toAccountId,
+        bool transactionSplitsRefs,
       })
     >;
 typedef $$BudgetsTableCreateCompanionBuilder =
@@ -6055,6 +6722,434 @@ typedef $$GoalsTableProcessedTableManager =
       Goal,
       PrefetchHooks Function()
     >;
+typedef $$TransactionSplitsTableCreateCompanionBuilder =
+    TransactionSplitsCompanion Function({
+      required String id,
+      required String transactionId,
+      required String categoryId,
+      required double amount,
+      Value<String?> note,
+      Value<int> rowid,
+    });
+typedef $$TransactionSplitsTableUpdateCompanionBuilder =
+    TransactionSplitsCompanion Function({
+      Value<String> id,
+      Value<String> transactionId,
+      Value<String> categoryId,
+      Value<double> amount,
+      Value<String?> note,
+      Value<int> rowid,
+    });
+
+final class $$TransactionSplitsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $TransactionSplitsTable,
+          TransactionSplit
+        > {
+  $$TransactionSplitsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $TransactionsTable _transactionIdTable(_$AppDatabase db) =>
+      db.transactions.createAlias(
+        $_aliasNameGenerator(
+          db.transactionSplits.transactionId,
+          db.transactions.id,
+        ),
+      );
+
+  $$TransactionsTableProcessedTableManager get transactionId {
+    final $_column = $_itemColumn<String>('transaction_id')!;
+
+    final manager = $$TransactionsTableTableManager(
+      $_db,
+      $_db.transactions,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_transactionIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $CategoriesTable _categoryIdTable(_$AppDatabase db) =>
+      db.categories.createAlias(
+        $_aliasNameGenerator(db.transactionSplits.categoryId, db.categories.id),
+      );
+
+  $$CategoriesTableProcessedTableManager get categoryId {
+    final $_column = $_itemColumn<String>('category_id')!;
+
+    final manager = $$CategoriesTableTableManager(
+      $_db,
+      $_db.categories,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_categoryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$TransactionSplitsTableFilterComposer
+    extends Composer<_$AppDatabase, $TransactionSplitsTable> {
+  $$TransactionSplitsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$TransactionsTableFilterComposer get transactionId {
+    final $$TransactionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.transactionId,
+      referencedTable: $db.transactions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TransactionsTableFilterComposer(
+            $db: $db,
+            $table: $db.transactions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$CategoriesTableFilterComposer get categoryId {
+    final $$CategoriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.categoryId,
+      referencedTable: $db.categories,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CategoriesTableFilterComposer(
+            $db: $db,
+            $table: $db.categories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TransactionSplitsTableOrderingComposer
+    extends Composer<_$AppDatabase, $TransactionSplitsTable> {
+  $$TransactionSplitsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$TransactionsTableOrderingComposer get transactionId {
+    final $$TransactionsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.transactionId,
+      referencedTable: $db.transactions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TransactionsTableOrderingComposer(
+            $db: $db,
+            $table: $db.transactions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$CategoriesTableOrderingComposer get categoryId {
+    final $$CategoriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.categoryId,
+      referencedTable: $db.categories,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CategoriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.categories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TransactionSplitsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TransactionSplitsTable> {
+  $$TransactionSplitsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  $$TransactionsTableAnnotationComposer get transactionId {
+    final $$TransactionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.transactionId,
+      referencedTable: $db.transactions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TransactionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.transactions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$CategoriesTableAnnotationComposer get categoryId {
+    final $$CategoriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.categoryId,
+      referencedTable: $db.categories,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CategoriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.categories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TransactionSplitsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $TransactionSplitsTable,
+          TransactionSplit,
+          $$TransactionSplitsTableFilterComposer,
+          $$TransactionSplitsTableOrderingComposer,
+          $$TransactionSplitsTableAnnotationComposer,
+          $$TransactionSplitsTableCreateCompanionBuilder,
+          $$TransactionSplitsTableUpdateCompanionBuilder,
+          (TransactionSplit, $$TransactionSplitsTableReferences),
+          TransactionSplit,
+          PrefetchHooks Function({bool transactionId, bool categoryId})
+        > {
+  $$TransactionSplitsTableTableManager(
+    _$AppDatabase db,
+    $TransactionSplitsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TransactionSplitsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TransactionSplitsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TransactionSplitsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> transactionId = const Value.absent(),
+                Value<String> categoryId = const Value.absent(),
+                Value<double> amount = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => TransactionSplitsCompanion(
+                id: id,
+                transactionId: transactionId,
+                categoryId: categoryId,
+                amount: amount,
+                note: note,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String transactionId,
+                required String categoryId,
+                required double amount,
+                Value<String?> note = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => TransactionSplitsCompanion.insert(
+                id: id,
+                transactionId: transactionId,
+                categoryId: categoryId,
+                amount: amount,
+                note: note,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$TransactionSplitsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({transactionId = false, categoryId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (transactionId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.transactionId,
+                                referencedTable:
+                                    $$TransactionSplitsTableReferences
+                                        ._transactionIdTable(db),
+                                referencedColumn:
+                                    $$TransactionSplitsTableReferences
+                                        ._transactionIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (categoryId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.categoryId,
+                                referencedTable:
+                                    $$TransactionSplitsTableReferences
+                                        ._categoryIdTable(db),
+                                referencedColumn:
+                                    $$TransactionSplitsTableReferences
+                                        ._categoryIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$TransactionSplitsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $TransactionSplitsTable,
+      TransactionSplit,
+      $$TransactionSplitsTableFilterComposer,
+      $$TransactionSplitsTableOrderingComposer,
+      $$TransactionSplitsTableAnnotationComposer,
+      $$TransactionSplitsTableCreateCompanionBuilder,
+      $$TransactionSplitsTableUpdateCompanionBuilder,
+      (TransactionSplit, $$TransactionSplitsTableReferences),
+      TransactionSplit,
+      PrefetchHooks Function({bool transactionId, bool categoryId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6071,4 +7166,6 @@ class $AppDatabaseManager {
       $$DebtsTableTableManager(_db, _db.debts);
   $$GoalsTableTableManager get goals =>
       $$GoalsTableTableManager(_db, _db.goals);
+  $$TransactionSplitsTableTableManager get transactionSplits =>
+      $$TransactionSplitsTableTableManager(_db, _db.transactionSplits);
 }
