@@ -18,8 +18,9 @@ void main() {
       ),
     );
 
-    // Allow async streams to deliver first batch of data
-    await tester.pumpAndSettle();
+    // Pump initial frame and settle timers
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Lumina Expense'), findsOneWidget);
     expect(find.text('Total Net Worth'), findsOneWidget);

@@ -11,14 +11,7 @@ class TotalBalanceCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final accountsAsync = ref.watch(accountsWithBalancesStreamProvider);
-
-    final now = DateTime.now();
-    final startOfMonth = DateTime(now.year, now.month, 1);
-    final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
-
-    final summaryAsync = ref.watch(
-      Provider((ref) => ref.watch(transactionRepositoryProvider).watchSummary(startOfMonth, endOfMonth)),
-    );
+    final summaryAsync = ref.watch(currentMonthSummaryStreamProvider);
 
     final totalNetWorth = accountsAsync.when(
       data: (accounts) => accounts.fold<double>(0.0, (sum, a) => sum + a.currentBalance),
@@ -94,77 +87,79 @@ class TotalBalanceCard extends ConsumerWidget {
               color: Colors.black.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: StreamBuilder<FinancialSummary>(
-              stream: summaryAsync,
-              builder: (context, snapshot) {
-                final income = snapshot.data?.totalIncome ?? 0.0;
-                final expense = snapshot.data?.totalExpense ?? 0.0;
-
-                return Row(
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppColors.income.withValues(alpha: 0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.arrow_downward_rounded, color: Colors.greenAccent, size: 16),
+            child: summaryAsync.when(
+              data: (summary) => Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.income.withValues(alpha: 0.2),
+                            shape: BoxShape.circle,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Income', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                                Text(
-                                  CurrencyFormatter.format(income),
-                                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
+                          child: const Icon(Icons.arrow_downward_rounded, color: Colors.greenAccent, size: 16),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Income', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                              Text(
+                                CurrencyFormatter.format(summary.totalIncome),
+                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                    Container(height: 28, width: 1, color: Colors.white24),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppColors.expense.withValues(alpha: 0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.arrow_upward_rounded, color: Colors.redAccent, size: 16),
+                  ),
+                  Container(height: 28, width: 1, color: Colors.white24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.expense.withValues(alpha: 0.2),
+                            shape: BoxShape.circle,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Expenses', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                                Text(
-                                  CurrencyFormatter.format(expense),
-                                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
+                          child: const Icon(Icons.arrow_upward_rounded, color: Colors.redAccent, size: 16),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Expenses', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                              Text(
+                                CurrencyFormatter.format(summary.totalExpense),
+                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                );
-              },
+                  ),
+                ],
+              ),
+              loading: () => const Center(
+                child: SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70),
+                ),
+              ),
+              error: (_, _) => const SizedBox.shrink(),
             ),
           ),
         ],

@@ -197,3 +197,10 @@ final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
 final recentTransactionsStreamProvider = StreamProvider<List<TransactionWithDetails>>((ref) {
   return ref.watch(transactionRepositoryProvider).watchTransactionsWithDetails(limit: 15);
 });
+
+final currentMonthSummaryStreamProvider = StreamProvider<FinancialSummary>((ref) {
+  final now = DateTime.now();
+  final startOfMonth = DateTime(now.year, now.month, 1);
+  final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+  return ref.watch(transactionRepositoryProvider).watchSummary(startOfMonth, endOfMonth);
+});
