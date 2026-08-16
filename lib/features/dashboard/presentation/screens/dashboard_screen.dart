@@ -15,11 +15,20 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF10B981), size: 24),
-            SizedBox(width: 8),
-            Text('Lumina Expense'),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/images/app_logo.png',
+                width: 28,
+                height: 28,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF10B981), size: 24),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text('Lumina Expense'),
           ],
         ),
       ),
