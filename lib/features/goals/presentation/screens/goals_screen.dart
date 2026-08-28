@@ -422,20 +422,23 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
             const SizedBox(height: 16),
 
             // Tab Filter Bar
-            Row(
-              children: [
-                ChoiceChip(
-                  label: const Text('In Progress'),
-                  selected: !_showCompleted,
-                  onSelected: (sel) => setState(() => _showCompleted = !sel),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('All Goals'),
-                  selected: _showCompleted,
-                  onSelected: (sel) => setState(() => _showCompleted = sel),
-                ),
-              ],
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ChoiceChip(
+                    label: const Text('In Progress'),
+                    selected: !_showCompleted,
+                    onSelected: (sel) => setState(() => _showCompleted = !sel),
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('All Goals'),
+                    selected: _showCompleted,
+                    onSelected: (sel) => setState(() => _showCompleted = sel),
+                  ),
+                ],
+              ),
             ),
 
             const SizedBox(height: 12),

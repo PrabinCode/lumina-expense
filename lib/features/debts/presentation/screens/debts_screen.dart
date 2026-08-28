@@ -236,20 +236,23 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
             const SizedBox(height: 16),
 
             // Tab Filter Bar
-            Row(
-              children: [
-                ChoiceChip(
-                  label: const Text('Active Debts'),
-                  selected: !_showSettled,
-                  onSelected: (sel) => setState(() => _showSettled = !sel),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('All / Settled'),
-                  selected: _showSettled,
-                  onSelected: (sel) => setState(() => _showSettled = sel),
-                ),
-              ],
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ChoiceChip(
+                    label: const Text('Active Debts'),
+                    selected: !_showSettled,
+                    onSelected: (sel) => setState(() => _showSettled = !sel),
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('All / Settled'),
+                    selected: _showSettled,
+                    onSelected: (sel) => setState(() => _showSettled = sel),
+                  ),
+                ],
+              ),
             ),
 
             const SizedBox(height: 12),
