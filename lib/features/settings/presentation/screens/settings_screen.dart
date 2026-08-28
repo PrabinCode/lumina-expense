@@ -510,7 +510,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 subtitle: '100% offline — zero data collection & local privacy',
                 icon: Icons.shield_outlined,
                 iconColor: const Color(0xFF10B981),
-                onTap: () => _launchUrl('https://pcshrestha.com.np/lumina-expense-tracker'),
+                onTap: () => _launchUrl('https://pcshrestha.com.np/lumina-expense-tracker/privacy-policy'),
               ),
               const SizedBox(height: 8),
 
