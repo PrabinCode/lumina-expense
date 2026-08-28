@@ -53,5 +53,8 @@ ROADMAP.md
 scratch/
 *.local.md
 *.local.json
-.vscode/
+# Keystore and credentials
+*.keystore
+*.jks
+android/key.properties
 

@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -499,6 +501,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
               const SizedBox(height: 20),
 
+              // ─── Legal, Privacy & Support ───
+              const Text('Legal & Support', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Privacy Policy & Terms',
+                subtitle: '100% offline — zero data collection & local privacy',
+                icon: Icons.shield_outlined,
+                iconColor: const Color(0xFF10B981),
+                onTap: () => _launchUrl('https://pcshrestha.com.np/lumina-expense-tracker'),
+              ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Send Feedback & Error Report',
+                subtitle: 'Report bugs or send logs directly to Prabin',
+                icon: Icons.bug_report_outlined,
+                iconColor: AppColors.expense,
+                onTap: () => _showErrorReportDialog(context),
+              ),
+
+              const SizedBox(height: 20),
+
               // ─── Streamlined About & Creator Credit ───
               const Text('About', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
@@ -594,6 +619,144 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  void _showErrorReportDialog(BuildContext context) {
+    final noteController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Row(
+                children: [
+                  Icon(Icons.bug_report_outlined, color: AppColors.primary, size: 24),
+                  SizedBox(width: 10),
+                  Text('Send Feedback & Error Report', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Encountered an issue or have an idea? You can send a direct diagnostic report or error description to Prabin.',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: noteController,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  hintText: 'Describe what happened or share your feedback (you can also attach screenshots in your email client)...',
+                  hintStyle: const TextStyle(fontSize: 13),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline_rounded, size: 16, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Diagnostics attached: v1.1.0+2 • ${Platform.operatingSystem} • SQLite v4',
+                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.share_outlined, size: 16),
+                      label: const Text('Share Diagnostic'),
+                      onPressed: () {
+                        final body = '--- Lumina Diagnostics ---\n'
+                            'Version: v1.1.0+2\n'
+                            'Package: com.prabincode.luminaexpense\n'
+                            'OS: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}\n'
+                            'User Notes:\n${noteController.text}\n';
+                        Share.share(body, subject: 'Lumina Expense Diagnostic Report');
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      icon: const Icon(Icons.send_rounded, size: 16),
+                      label: const Text('Email Prabin'),
+                      onPressed: () async {
+                        final userNotes = noteController.text.trim();
+                        final subject = Uri.encodeComponent('[Lumina Expense v1.1.0] Bug Report / Feedback');
+                        final body = Uri.encodeComponent(
+                          'Hi Prabin,\n\n'
+                          'Here is my feedback / issue report:\n'
+                          '${userNotes.isEmpty ? "(Describe your issue or attach screenshot here)" : userNotes}\n\n'
+                          '--- System Diagnostics ---\n'
+                          'App Version: v1.1.0 (Build 2)\n'
+                          'Package: com.prabincode.luminaexpense\n'
+                          'Platform: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}\n'
+                          'Database Schema: v4\n'
+                          'Timestamp: ${DateTime.now().toIso8601String()}\n'
+                        );
+                        final mailtoUri = Uri.parse('mailto:prabin@pcshrestha.com.np?subject=$subject&body=$body');
+                        if (await canLaunchUrl(mailtoUri)) {
+                          await launchUrl(mailtoUri);
+                        } else {
+                          Share.share('Subject: [Lumina Expense v1.1.0] Bug Report\n\n$userNotes\n\n(Send to prabin@pcshrestha.com.np)');
+                        }
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

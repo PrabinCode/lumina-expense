@@ -1,4 +1,4 @@
-package com.lumina.lumina_expense
+package com.prabincode.luminaexpense
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 
