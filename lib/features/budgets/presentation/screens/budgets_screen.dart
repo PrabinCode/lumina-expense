@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
@@ -57,10 +58,10 @@ class BudgetsScreen extends ConsumerWidget {
                   TextField(
                     controller: amountController,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Monthly Limit Amount',
-                      prefixText: '\$ ',
-                      border: OutlineInputBorder(),
+                      prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ],
@@ -94,6 +95,7 @@ class BudgetsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(currencyProvider);
     final budgetsAsync = ref.watch(currentMonthBudgetsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 

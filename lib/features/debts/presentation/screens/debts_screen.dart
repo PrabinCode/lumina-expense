@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../data/debt_repository.dart';
@@ -125,10 +126,10 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
               TextField(
                 controller: settleController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Repayment Amount',
-                  prefixText: '\$ ',
-                  border: OutlineInputBorder(),
+                  prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
+                  border: const OutlineInputBorder(),
                 ),
               ),
             ],
@@ -153,6 +154,7 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currencyProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final summaryAsync = ref.watch(debtSummaryStreamProvider);
     final debtsAsync = ref.watch(debtsStreamProvider(_showSettled ? null : false));

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../goals/data/goal_repository.dart';
@@ -11,6 +12,7 @@ class DashboardGoalsCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(currencyProvider);
     final summaryAsync = ref.watch(goalsSummaryStreamProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -41,23 +43,29 @@ class DashboardGoalsCard extends ConsumerWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                                shape: BoxShape.circle,
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.savings_rounded, color: Color(0xFF10B981), size: 18),
                               ),
-                              child: const Icon(Icons.savings_rounded, color: Color(0xFF10B981), size: 18),
-                            ),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Savings & Goals',
-                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                            ),
-                          ],
+                              const SizedBox(width: 10),
+                              const Expanded(
+                                child: Text(
+                                  'Savings & Goals',
+                                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                        const SizedBox(width: 8),
                         Text(
                           '${(summary.overallProgress * 100).toStringAsFixed(0)}% Saved',
                           style: const TextStyle(
@@ -69,8 +77,11 @@ class DashboardGoalsCard extends ConsumerWidget {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
                         Text(
                           '${CurrencyFormatter.format(summary.totalSaved)} saved',

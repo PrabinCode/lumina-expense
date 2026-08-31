@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
@@ -103,6 +104,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> with 
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currencyProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final summaryAsync = ref.watch(subscriptionsSummaryStreamProvider);
     final allSubsAsync = ref.watch(allSubscriptionsStreamProvider);
@@ -628,8 +630,8 @@ class _AddEditSubscriptionModalState extends ConsumerState<_AddEditSubscriptionM
               controller: _amountController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
-                labelText: 'Amount (\$)',
-                prefixText: '\$ ',
+                labelText: 'Amount (${CurrencyFormatter.activeCurrencySymbol})',
+                prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
                 filled: true,
                 fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),

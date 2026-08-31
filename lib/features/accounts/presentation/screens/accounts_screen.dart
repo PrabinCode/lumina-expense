@@ -184,6 +184,7 @@ class AccountsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(currencyProvider);
     final accountsAsync = ref.watch(accountsWithBalancesStreamProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 

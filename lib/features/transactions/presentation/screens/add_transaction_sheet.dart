@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
@@ -282,6 +283,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currencyProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final accountsAsync = ref.watch(accountsStreamProvider);
     final categoriesAsync = ref.watch(categoriesStreamProvider(_type == 'transfer' ? null : _type));
@@ -366,7 +368,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
               textBaseline: TextBaseline.alphabetic,
               children: [
                 Text(
-                  '\$ ',
+                  '${CurrencyFormatter.activeCurrencySymbol} ',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -603,7 +605,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                                                 onChanged: (_) => setState(() {}),
                                                 decoration: InputDecoration(
                                                   hintText: 'Amount',
-                                                  prefixText: '\$ ',
+                                                  prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
                                                   filled: true,
                                                   fillColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
                                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),

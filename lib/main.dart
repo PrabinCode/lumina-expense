@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'core/services/app_log_service.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'features/analytics/presentation/screens/analytics_screen.dart';
@@ -18,6 +19,7 @@ import 'features/subscriptions/data/subscription_repository.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  AppLogService.initialize();
   runApp(
     const ProviderScope(
       child: LuminaExpenseApp(),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../subscriptions/data/subscription_repository.dart';
@@ -11,6 +12,7 @@ class DashboardSubscriptionsCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(currencyProvider);
     final summaryAsync = ref.watch(subscriptionsSummaryStreamProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -41,23 +43,29 @@ class DashboardSubscriptionsCard extends ConsumerWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
-                                shape: BoxShape.circle,
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.subscriptions_rounded, color: Color(0xFF3B82F6), size: 18),
                               ),
-                              child: const Icon(Icons.subscriptions_rounded, color: Color(0xFF3B82F6), size: 18),
-                            ),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Recurring Bills & Subs',
-                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                            ),
-                          ],
+                              const SizedBox(width: 10),
+                              const Expanded(
+                                child: Text(
+                                  'Recurring Bills & Subs',
+                                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                        const SizedBox(width: 8),
                         if (summary.upcomingThisWeekCount > 0)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -86,8 +94,11 @@ class DashboardSubscriptionsCard extends ConsumerWidget {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
                         Text(
                           '${CurrencyFormatter.format(summary.totalMonthlyBurn)} / mo',

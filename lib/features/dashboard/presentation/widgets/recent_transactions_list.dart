@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
@@ -41,12 +42,6 @@ class RecentTransactionsList extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Text(
-                      tx.title,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                  ),
                   Text(
                     CurrencyFormatter.format(tx.amount),
                     style: TextStyle(
@@ -109,6 +104,7 @@ class RecentTransactionsList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(currencyProvider);
     final transactionsAsync = ref.watch(recentTransactionsStreamProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -118,10 +114,14 @@ class RecentTransactionsList extends ConsumerWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Recent Transactions',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            const Expanded(
+              child: Text(
+                'Recent Transactions',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
+            const SizedBox(width: 8),
             Text(
               'Latest 15',
               style: TextStyle(
@@ -282,33 +282,14 @@ class RecentTransactionsList extends ConsumerWidget {
                                     ],
                                   ),
                                   const SizedBox(height: 2),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        item.account.name,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                        ),
-                                      ),
-                                      if (item.toAccount != null) ...[
-                                        Text(
-                                          ' → ${item.toAccount!.name}',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                          ),
-                                        ),
-                                      ],
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '•  ${DateFormat('MMM d').format(tx.date)}',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                        ),
-                                      ),
-                                    ],
+                                  Text(
+                                    '${item.account.name}${item.toAccount != null ? ' → ${item.toAccount!.name}' : ''}  •  ${DateFormat('MMM d').format(tx.date)}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                    ),
                                   ),
                                 ],
                               ),

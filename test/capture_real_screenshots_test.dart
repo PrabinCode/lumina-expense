@@ -78,6 +78,7 @@ void main() {
             for (final d in targetDirs) {
               final file = File('${d.path}/$filename.png');
               file.writeAsBytesSync(pngBytes);
+              // ignore: avoid_print
               print('Saved authentic screenshot: ${file.path} (${pngBytes.length} bytes)');
             }
           }
@@ -88,8 +89,8 @@ void main() {
     // 1. Dashboard
     await captureScreen(const LuminaExpenseApp(), 'screenshot_dashboard');
 
-    // 2. Analytics
-    await captureScreen(const Scaffold(body: AnalyticsScreen()), 'screenshot_analytics');
+    // 2. Analytics (August 2026 with full breakdown & chart)
+    await captureScreen(Scaffold(body: AnalyticsScreen(initialMonth: DateTime(2026, 8, 1))), 'screenshot_analytics');
 
     // 3. Budgets
     await captureScreen(const Scaffold(body: BudgetsScreen()), 'screenshot_budgets');

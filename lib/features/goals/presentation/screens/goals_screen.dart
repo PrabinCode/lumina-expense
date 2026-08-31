@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../data/goal_repository.dart';
@@ -38,8 +39,8 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
       0xFF8B5CF6, // Purple
       0xFFF59E0B, // Amber
       0xFFEC4899, // Pink
+      0xFFEF4444, // Red
       0xFF06B6D4, // Cyan
-      0xFFF97316, // Orange
       0xFF6366F1, // Indigo
     ];
 
@@ -47,10 +48,10 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
       {'name': 'savings', 'icon': Icons.savings_rounded, 'label': 'Savings'},
       {'name': 'flight', 'icon': Icons.flight_takeoff_rounded, 'label': 'Travel'},
       {'name': 'laptop', 'icon': Icons.laptop_mac_rounded, 'label': 'Tech'},
-      {'name': 'home', 'icon': Icons.home_rounded, 'label': 'Home'},
-      {'name': 'directions_car', 'icon': Icons.directions_car_rounded, 'label': 'Car'},
+      {'name': 'home', 'icon': Icons.home_rounded, 'label': 'House'},
+      {'name': 'directions_car', 'icon': Icons.directions_car_rounded, 'label': 'Vehicle'},
       {'name': 'school', 'icon': Icons.school_rounded, 'label': 'Education'},
-      {'name': 'favorite', 'icon': Icons.favorite_rounded, 'label': 'Emergency'},
+      {'name': 'favorite', 'icon': Icons.favorite_rounded, 'label': 'Health'},
       {'name': 'card_giftcard', 'icon': Icons.card_giftcard_rounded, 'label': 'Gift'},
     ];
 
@@ -58,12 +59,9 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
       context: context,
       builder: (context) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (context, setState) {
             return AlertDialog(
-              title: Text(
-                editGoal == null ? 'New Savings Goal' : 'Edit Savings Goal',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+              title: Text(editGoal == null ? 'New Savings Goal' : 'Edit Savings Goal', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -80,20 +78,20 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                     TextField(
                       controller: targetAmountController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Target Amount',
-                        prefixText: '\$ ',
-                        border: OutlineInputBorder(),
+                        prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
+                        border: const OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: currentAmountController,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Current Saved Amount',
-                        prefixText: '\$ ',
-                        border: OutlineInputBorder(),
+                        prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
+                        border: const OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -108,12 +106,11 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                         selectedDate == null
                             ? 'Set Target Date (Optional)'
                             : 'Target: ${DateFormat.yMMMd().format(selectedDate!)}',
-                        style: const TextStyle(fontSize: 13),
                       ),
                       trailing: selectedDate != null
                           ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () => setDialogState(() => selectedDate = null),
+                              icon: const Icon(Icons.clear_rounded, size: 18),
+                              onPressed: () => setState(() => selectedDate = null),
                             )
                           : null,
                       onTap: () async {
@@ -121,68 +118,75 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                           context: context,
                           initialDate: selectedDate ?? DateTime.now().add(const Duration(days: 90)),
                           firstDate: DateTime.now(),
-                          lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
+                          lastDate: DateTime.now().add(const Duration(days: 3650)),
                         );
                         if (picked != null) {
-                          setDialogState(() => selectedDate = picked);
+                          setState(() => selectedDate = picked);
                         }
                       },
                     ),
-                    const SizedBox(height: 16),
-                    const Text('Select Icon', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 14),
+
+                    // Color Picker
+                    const Text('Goal Color', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: availableColors.map((c) {
+                        final isSelected = selectedColor == c;
+                        return GestureDetector(
+                          onTap: () => setState(() => selectedColor = c),
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: Color(c),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isSelected ? Colors.white : Colors.transparent,
+                                width: 2.5,
+                              ),
+                              boxShadow: isSelected
+                                  ? [
+                                      BoxShadow(
+                                        color: Color(c).withValues(alpha: 0.6),
+                                        blurRadius: 8,
+                                        spreadRadius: 1,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: isSelected ? const Icon(Icons.check, size: 18, color: Colors.white) : null,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Icon Picker
+                    const Text('Goal Category / Icon', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: availableIcons.map((item) {
                         final isSelected = selectedIcon == item['name'];
-                        return InkWell(
-                          onTap: () => setDialogState(() => selectedIcon = item['name'] as String),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? Color(selectedColor).withValues(alpha: 0.2)
-                                  : Colors.grey.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isSelected ? Color(selectedColor) : Colors.transparent,
-                                width: 2,
-                              ),
-                            ),
-                            child: Icon(item['icon'] as IconData, size: 20, color: Color(selectedColor)),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('Color Accent', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: availableColors.map((colorVal) {
-                        final isSelected = selectedColor == colorVal;
-                        return InkWell(
-                          onTap: () => setDialogState(() => selectedColor = colorVal),
-                          child: Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: Color(colorVal),
-                              shape: BoxShape.circle,
-                              border: isSelected ? Border.all(color: Colors.white, width: 3) : null,
-                            ),
-                          ),
+                        return ChoiceChip(
+                          avatar: Icon(item['icon'] as IconData, size: 16, color: isSelected ? Colors.white : AppColors.primary),
+                          label: Text(item['label'] as String),
+                          selected: isSelected,
+                          selectedColor: AppColors.primary,
+                          onSelected: (_) => setState(() => selectedIcon = item['name'] as String),
                         );
                       }).toList(),
                     ),
                     const SizedBox(height: 12),
+
                     TextField(
                       controller: notesController,
                       decoration: const InputDecoration(
-                        labelText: 'Notes (Optional)',
+                        labelText: 'Notes / Motivation (Optional)',
                         border: OutlineInputBorder(),
                       ),
                     ),
@@ -190,10 +194,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
                 ElevatedButton(
                   onPressed: () async {
                     final name = nameController.text.trim();
@@ -201,43 +202,41 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                     final current = double.tryParse(currentAmountController.text.trim()) ?? 0.0;
                     if (name.isEmpty || target <= 0) return;
 
-                    final isCompleted = current >= target;
-
+                    final repo = ref.read(goalRepositoryProvider);
                     if (editGoal == null) {
                       const uuid = Uuid();
-                      await ref.read(goalRepositoryProvider).createGoal(
-                            GoalsCompanion.insert(
-                              id: uuid.v4(),
-                              name: name,
-                              targetAmount: target,
-                              currentAmount: drift.Value(current),
-                              targetDate: drift.Value(selectedDate),
-                              iconName: drift.Value(selectedIcon),
-                              colorValue: drift.Value(selectedColor),
-                              notes: drift.Value(notesController.text.trim().isEmpty ? null : notesController.text.trim()),
-                              isCompleted: drift.Value(isCompleted),
-                            ),
-                          );
+                      await repo.createGoal(
+                        GoalsCompanion.insert(
+                          id: uuid.v4(),
+                          name: name,
+                          targetAmount: target,
+                          currentAmount: drift.Value(current),
+                          targetDate: drift.Value(selectedDate),
+                          colorValue: drift.Value(selectedColor),
+                          iconName: drift.Value(selectedIcon),
+                          notes: drift.Value(notesController.text.trim().isEmpty ? null : notesController.text.trim()),
+                        ),
+                      );
                     } else {
-                      await ref.read(goalRepositoryProvider).updateGoal(
-                            GoalsCompanion(
-                              id: drift.Value(editGoal.id),
-                              name: drift.Value(name),
-                              targetAmount: drift.Value(target),
-                              currentAmount: drift.Value(current),
-                              targetDate: drift.Value(selectedDate),
-                              iconName: drift.Value(selectedIcon),
-                              colorValue: drift.Value(selectedColor),
-                              notes: drift.Value(notesController.text.trim().isEmpty ? null : notesController.text.trim()),
-                              isCompleted: drift.Value(isCompleted),
-                              createdAt: drift.Value(editGoal.createdAt),
-                            ),
-                          );
+                      final isCompleted = current >= target;
+                      await repo.updateGoal(
+                        GoalsCompanion(
+                          id: drift.Value(editGoal.id),
+                          name: drift.Value(name),
+                          targetAmount: drift.Value(target),
+                          currentAmount: drift.Value(current),
+                          targetDate: drift.Value(selectedDate),
+                          colorValue: drift.Value(selectedColor),
+                          iconName: drift.Value(selectedIcon),
+                          notes: drift.Value(notesController.text.trim().isEmpty ? null : notesController.text.trim()),
+                          isCompleted: drift.Value(isCompleted),
+                          createdAt: drift.Value(editGoal.createdAt),
+                        ),
+                      );
                     }
-
                     if (context.mounted) Navigator.pop(context);
                   },
-                  child: const Text('Save Goal'),
+                  child: Text(editGoal == null ? 'Create Goal' : 'Save Changes'),
                 ),
               ],
             );
@@ -261,7 +260,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                 color: isDeposit ? AppColors.income : AppColors.expense,
               ),
               const SizedBox(width: 8),
-              Text(isDeposit ? 'Deposit to ${goal.name}' : 'Withdraw from ${goal.name}', style: const TextStyle(fontSize: 16)),
+              Text(isDeposit ? 'Deposit to Goal' : 'Withdraw from Goal'),
             ],
           ),
           content: Column(
@@ -275,7 +274,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
                   labelText: isDeposit ? 'Deposit Amount' : 'Withdrawal Amount',
-                  prefixText: '\$ ',
+                  prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
                   border: const OutlineInputBorder(),
                 ),
               ),
@@ -328,6 +327,7 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currencyProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final summaryAsync = ref.watch(goalsSummaryStreamProvider);
     final goalsAsync = ref.watch(goalsStreamProvider(_showCompleted ? null : false));
@@ -370,7 +370,14 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Total Target Milestone', style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w600)),
+                          const Flexible(
+                            child: Text(
+                              'Total Target Milestone',
+                              style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                           Text(
                             '${(summary.overallProgress * 100).toStringAsFixed(1)}% Saved',
                             style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary),
@@ -378,13 +385,12 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                         ],
                       ),
                       const SizedBox(height: 6),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
                             CurrencyFormatter.format(summary.totalSaved),
-                            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.primary),
+                            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.primary),
                           ),
                           const SizedBox(width: 6),
                           Text(
@@ -530,9 +536,12 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                                   children: [
                                     Row(
                                       children: [
-                                        Text(
-                                          goal.name,
-                                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                                        Expanded(
+                                          child: Text(
+                                            goal.name,
+                                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
                                         if (goal.isCompleted) ...[
                                           const SizedBox(width: 6),

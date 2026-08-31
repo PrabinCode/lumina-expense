@@ -3,21 +3,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
 import '../../../transactions/data/transaction_repository.dart';
 
 class AnalyticsScreen extends ConsumerStatefulWidget {
-  const AnalyticsScreen({super.key});
+  final DateTime? initialMonth;
+  const AnalyticsScreen({super.key, this.initialMonth});
 
   @override
   ConsumerState<AnalyticsScreen> createState() => _AnalyticsScreenState();
 }
 
 class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
-  DateTime _currentMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  late DateTime _currentMonth;
   int _touchedSectionIndex = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentMonth = widget.initialMonth != null
+        ? DateTime(widget.initialMonth!.year, widget.initialMonth!.month, 1)
+        : DateTime(DateTime.now().year, DateTime.now().month, 1);
+  }
 
   void _previousMonth() {
     setState(() {
@@ -33,6 +43,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currencyProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final startOfMonth = DateTime(_currentMonth.year, _currentMonth.month, 1);
     final endOfMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0, 23, 59, 59);

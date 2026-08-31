@@ -1,7 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -18,6 +16,7 @@ import '../../../goals/presentation/screens/goals_screen.dart';
 import '../../../health/presentation/screens/financial_health_screen.dart';
 import '../../../subscriptions/presentation/screens/subscriptions_screen.dart';
 import '../../../onboarding/presentation/screens/onboarding_screen.dart';
+import 'feedback_report_sheet.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -163,6 +162,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings & Preferences'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.bug_report_outlined),
+            tooltip: 'Feedback & Bug Report',
+            onPressed: () => FeedbackReportSheet.show(context),
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -220,8 +226,83 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
               const SizedBox(height: 20),
 
-              // ─── Preferences (Theme & Currency) ───
-              const Text('Appearance & Currency', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              // ─── Section 1: Financial Tools & Management ───
+              const Row(
+                children: [
+                  Icon(Icons.account_balance_wallet_rounded, size: 16, color: AppColors.primary),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text('Financial Tools & Management', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Accounts & Wallets',
+                subtitle: 'Manage bank accounts, cash wallets & cards',
+                icon: Icons.account_balance_wallet_outlined,
+                iconColor: AppColors.transfer,
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountsScreen())),
+              ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Monthly Budgets',
+                subtitle: 'Category spending caps and alerts',
+                icon: Icons.track_changes_outlined,
+                iconColor: AppColors.warning,
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BudgetsScreen())),
+              ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Savings & Sinking Goals',
+                subtitle: 'Track milestone targets, vacations & funds',
+                icon: Icons.savings_outlined,
+                iconColor: const Color(0xFF10B981),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GoalsScreen())),
+              ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Debts & Loans (IOUs)',
+                subtitle: 'Money lent to others or borrowed',
+                icon: Icons.handshake_outlined,
+                iconColor: AppColors.secondary,
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DebtsScreen())),
+              ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Subscriptions & Bills',
+                subtitle: 'Track recurring commitments and monthly burn',
+                icon: Icons.subscriptions_outlined,
+                iconColor: const Color(0xFF3B82F6),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsScreen())),
+              ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Financial Health Score',
+                subtitle: 'Smart insights & spending analysis',
+                icon: Icons.favorite_border_rounded,
+                iconColor: AppColors.expense,
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FinancialHealthScreen())),
+              ),
+
+              const SizedBox(height: 24),
+
+              // ─── Section 2: Preferences & Personalization ───
+              const Row(
+                children: [
+                  Icon(Icons.tune_rounded, size: 16, color: AppColors.primary),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text('Preferences & Customization', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
 
               Material(
@@ -233,7 +314,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 child: Column(
                   children: [
-                    // Compact Theme Dropdown Tile
+                    // Theme Mode
                     ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       leading: Container(
@@ -270,7 +351,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
                     const Divider(height: 1),
 
-                    // Global Base Currency Dropdown Tile
+                    // Base Currency
                     ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       leading: Container(
@@ -314,11 +395,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 8),
 
-              const SizedBox(height: 20),
+              _SettingsNavTile(
+                title: 'Categories & Reordering',
+                subtitle: 'Add, edit, delete & drag to reorder categories',
+                icon: Icons.category_outlined,
+                iconColor: const Color(0xFFF97316),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoriesScreen())),
+              ),
 
-              // ─── Security & Privacy ───
-              const Text('Security & Privacy', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 24),
+
+              // ─── Section 3: Security & Privacy ───
+              const Row(
+                children: [
+                  Icon(Icons.shield_rounded, size: 16, color: AppColors.primary),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text('Security & Privacy', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
 
               Material(
@@ -423,27 +521,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
-              // ─── Data & Tools ───
-              const Text('Data & Tools', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-
-              _SettingsNavTile(
-                title: 'Categories & Reordering',
-                subtitle: 'Add, edit, delete & drag to reorder categories',
-                icon: Icons.category_outlined,
-                iconColor: const Color(0xFFF97316),
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoriesScreen())),
-              ),
-              const SizedBox(height: 8),
-
-              _SettingsNavTile(
-                title: 'Financial Health Score',
-                subtitle: 'Smart insights & spending analysis',
-                icon: Icons.favorite_border_rounded,
-                iconColor: AppColors.expense,
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FinancialHealthScreen())),
+              // ─── Section 4: Data & Backup ───
+              const Row(
+                children: [
+                  Icon(Icons.cloud_sync_rounded, size: 16, color: AppColors.primary),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text('Data & Backup', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
 
@@ -454,93 +542,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 iconColor: AppColors.primary,
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen())),
               ),
-              const SizedBox(height: 8),
 
-              _SettingsNavTile(
-                title: 'Accounts & Wallets',
-                subtitle: 'Manage bank accounts, cash wallets & cards',
-                icon: Icons.account_balance_wallet_outlined,
-                iconColor: AppColors.transfer,
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountsScreen())),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 24),
 
-              _SettingsNavTile(
-                title: 'Monthly Budgets',
-                subtitle: 'Category spending caps and alerts',
-                icon: Icons.track_changes_outlined,
-                iconColor: AppColors.warning,
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BudgetsScreen())),
-              ),
-              const SizedBox(height: 8),
-
-              _SettingsNavTile(
-                title: 'Debts & Loans (IOUs)',
-                subtitle: 'Money lent to others or borrowed',
-                icon: Icons.handshake_outlined,
-                iconColor: AppColors.secondary,
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DebtsScreen())),
-              ),
-              const SizedBox(height: 8),
-
-              _SettingsNavTile(
-                title: 'Savings & Sinking Goals',
-                subtitle: 'Track milestone targets, vacations & funds',
-                icon: Icons.savings_outlined,
-                iconColor: const Color(0xFF10B981),
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GoalsScreen())),
-              ),
-              const SizedBox(height: 8),
-
-              _SettingsNavTile(
-                title: 'Subscriptions & Bills',
-                subtitle: 'Track recurring commitments and monthly burn',
-                icon: Icons.subscriptions_outlined,
-                iconColor: const Color(0xFF3B82F6),
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsScreen())),
-              ),
-
-              const SizedBox(height: 20),
-
-              // ─── Legal, Privacy & Support ───
-              const Text('Legal & Support', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-
-              _SettingsNavTile(
-                title: 'App Tour & Walkthrough',
-                subtitle: 'Explore key features and guided visual overview',
-                icon: Icons.auto_awesome_rounded,
-                iconColor: AppColors.primary,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const OnboardingScreen(isViewingOnly: true),
+              // ─── Section 5: Streamlined About & Support ───
+              const Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, size: 16, color: AppColors.primary),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text('About & Support', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(height: 8),
-
-              _SettingsNavTile(
-                title: 'Privacy Policy & Terms',
-                subtitle: '100% offline — zero data collection & local privacy',
-                icon: Icons.shield_outlined,
-                iconColor: const Color(0xFF10B981),
-                onTap: () => _launchUrl('https://pcshrestha.com.np/lumina-expense-tracker/privacy-policy'),
-              ),
-              const SizedBox(height: 8),
-
-              _SettingsNavTile(
-                title: 'Send Feedback & Error Report',
-                subtitle: 'Report bugs or send logs directly to Prabin',
-                icon: Icons.bug_report_outlined,
-                iconColor: AppColors.expense,
-                onTap: () => _showErrorReportDialog(context),
-              ),
-
-              const SizedBox(height: 20),
-
-              // ─── Streamlined About & Creator Credit ───
-              const Text('About', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
 
               Container(
@@ -574,7 +588,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             child: Image.asset(
                               'assets/images/app_logo.png',
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.code_rounded, color: AppColors.primary, size: 22),
+                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.account_balance_wallet_rounded, color: AppColors.primary, size: 22),
                             ),
                           ),
                         ),
@@ -589,29 +603,100 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               ),
                               SizedBox(height: 2),
                               Text(
-                                'Senior Software Engineer',
+                                'Creator & Software Engineer',
                                 style: TextStyle(fontSize: 12, color: Colors.grey),
                               ),
                             ],
                           ),
                         ),
                         ActionChip(
-                          avatar: const Icon(Icons.language_rounded, size: 14, color: AppColors.primary),
-                          label: const Text('pcshrestha.com.np', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                          onPressed: () => _launchUrl('https://pcshrestha.com.np'),
+                          avatar: const Icon(Icons.open_in_new_rounded, size: 13, color: AppColors.primary),
+                          label: const Text('Website', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                          onPressed: () => _launchUrl('https://pcshrestha.com.np/lumina-expense-tracker'),
                         ),
                       ],
                     ),
+                    const SizedBox(height: 14),
+
+                    // App Tour & Walkthrough button inside About
+                    InkWell(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const OnboardingScreen(isViewingOnly: true),
+                        ),
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 18),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'App Tour & Walkthrough',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                                  ),
+                                  Text(
+                                    'Explore key features and guided visual overview',
+                                    style: TextStyle(fontSize: 11, color: Colors.grey),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.chevron_right_rounded, color: AppColors.primary, size: 18),
+                          ],
+                        ),
+                      ),
+                    ),
+
                     const Divider(height: 24),
                     Wrap(
                       alignment: WrapAlignment.spaceBetween,
                       crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      runSpacing: 8,
+                      spacing: 12,
+                      runSpacing: 10,
                       children: [
                         const Text(
-                          'Lumina Expense v1.1.0',
+                          'v1.1.0 (Build 2)',
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey),
+                        ),
+                        InkWell(
+                          onTap: () => FeedbackReportSheet.show(context),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.feedback_outlined, size: 14, color: AppColors.primary),
+                              SizedBox(width: 4),
+                              Text(
+                                'Feedback',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary),
+                              ),
+                            ],
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => _launchUrl('https://pcshrestha.com.np/lumina-expense-tracker/privacy-policy'),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.shield_outlined, size: 14, color: AppColors.primary),
+                              SizedBox(width: 4),
+                              Text(
+                                'Privacy Policy',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary),
+                              ),
+                            ],
+                          ),
                         ),
                         InkWell(
                           onTap: () => _showUpdateCheckDialog(context),
@@ -621,7 +706,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               Icon(Icons.system_update_alt_rounded, size: 14, color: AppColors.primary),
                               SizedBox(width: 4),
                               Text(
-                                'Check for Updates',
+                                'Updates',
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary),
                               ),
                             ],
@@ -638,144 +723,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  void _showErrorReportDialog(BuildContext context) {
-    final noteController = TextEditingController();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Row(
-                children: [
-                  Icon(Icons.bug_report_outlined, color: AppColors.primary, size: 24),
-                  SizedBox(width: 10),
-                  Text('Send Feedback & Error Report', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Encountered an issue or have an idea? You can send a direct diagnostic report or error description to Prabin.',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: noteController,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  hintText: 'Describe what happened or share your feedback (you can also attach screenshots in your email client)...',
-                  hintStyle: const TextStyle(fontSize: 13),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline_rounded, size: 16, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Diagnostics attached: v1.1.0+2 • ${Platform.operatingSystem} • SQLite v4',
-                        style: const TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.share_outlined, size: 16),
-                      label: const Text('Share Diagnostic'),
-                      onPressed: () {
-                        final body = '--- Lumina Diagnostics ---\n'
-                            'Version: v1.1.0+2\n'
-                            'Package: com.prabincode.luminaexpense\n'
-                            'OS: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}\n'
-                            'User Notes:\n${noteController.text}\n';
-                        Share.share(body, subject: 'Lumina Expense Diagnostic Report');
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      icon: const Icon(Icons.send_rounded, size: 16),
-                      label: const Text('Email Prabin'),
-                      onPressed: () async {
-                        final userNotes = noteController.text.trim();
-                        final subject = Uri.encodeComponent('[Lumina Expense v1.1.0] Bug Report / Feedback');
-                        final body = Uri.encodeComponent(
-                          'Hi Prabin,\n\n'
-                          'Here is my feedback / issue report:\n'
-                          '${userNotes.isEmpty ? "(Describe your issue or attach screenshot here)" : userNotes}\n\n'
-                          '--- System Diagnostics ---\n'
-                          'App Version: v1.1.0 (Build 2)\n'
-                          'Package: com.prabincode.luminaexpense\n'
-                          'Platform: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}\n'
-                          'Database Schema: v4\n'
-                          'Timestamp: ${DateTime.now().toIso8601String()}\n'
-                        );
-                        final mailtoUri = Uri.parse('mailto:prabin@pcshrestha.com.np?subject=$subject&body=$body');
-                        if (await canLaunchUrl(mailtoUri)) {
-                          await launchUrl(mailtoUri);
-                        } else {
-                          Share.share('Subject: [Lumina Expense v1.1.0] Bug Report\n\n$userNotes\n\n(Send to prabin@pcshrestha.com.np)');
-                        }
-                        if (ctx.mounted) Navigator.pop(ctx);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
