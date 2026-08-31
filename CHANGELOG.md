@@ -10,8 +10,30 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Fixed` - for any bug fixes.
 - `Other` - for technical and release chores.
 
+## [v1.4.0] - 2026-09-01
+### Added
+
+- **Advanced Financial Analytics Intelligence Suite**:
+  - **Multi-Period Timeframe Switcher**: Seamlessly switch between Week, Month, Quarter, and Year with responsive date range navigation.
+  - **6-Month Comparative Cash Flow Trend**: Side-by-side comparative bar chart visualizing monthly Income vs. Expense and net cash flow trajectory.
+  - **Day-of-Week Spending Heatmap**: 7-day distribution identifying peak spending habits across weekdays and weekends.
+  - **50/30/20 Macro Budget Analyzer**: Automatic classification of expenditures into Needs (50%), Wants (30%), and Savings/Debt (20%) with a 3-part progress indicator.
+  - **Category Month-over-Month (MoM) Growth Trends**: Category breakdown displaying percentage growth/reduction badges against prior month.
+  - **Tag Spending Matrix**: Grouped expenditures by hashtags (`#groceries`, `#bills`, `#vacation`).
+  - **Cumulative Spending Velocity & Daily Burn Rate**: Line curve comparing current month's day-by-day burn rate against the previous month and budget guidelines.
+  - **Top Merchants & Payees Leaderboard**: Ranked merchant breakdown with transaction counts and category indicators.
+- **Historical Period Transaction Explorer in Analytics**: Tap "Browse all transactions in this period" or any category in the Category Trends list / Donut chart to view and search itemized historical transactions.
+- **Category Expense Breakdown & Month Navigation in Budgets**:
+  - Month switcher in Budgets screen to track spending performance across any month.
+  - Total Monthly Budget Overview card with live remaining surplus/deficit.
+  - Category spending progress with transaction count badges and tap-to-view itemized transaction sheets.
+- **5-Second "UNDO" Action on Deletion**: Retains in-memory snapshots before single swipe deletions or multi-select batch deletions, presenting a 5-second SnackBar with an `UNDO` action to restore records and splits atomically.
+
+---
+
 ## [v1.3.0] - 2026-09-01
 ### Added
+
 
 - **Privacy Mask & Public Shield**: One-tap eye toggle in Dashboard and long-press on balance cards to instantly obscure financial balances (`$••••`) in public environments.
 - **App Launcher Quick Shortcuts**: Static Android shortcuts (`shortcuts.xml`) with `lumina://` deep links for instant "Add Expense", "Add Income", and "Health Score" entry from home screen.

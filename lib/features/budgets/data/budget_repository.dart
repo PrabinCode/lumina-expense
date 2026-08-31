@@ -8,12 +8,14 @@ class BudgetWithProgress {
   final Category category;
   final double currentSpent;
   final double percentage;
+  final int transactionCount;
 
   BudgetWithProgress({
     required this.budget,
     required this.category,
     required this.currentSpent,
     required this.percentage,
+    this.transactionCount = 0,
   });
 
   bool get isOverBudget => currentSpent > budget.amountLimit;
@@ -64,17 +66,19 @@ class BudgetRepository {
             .get();
 
         double spent = directTxs.fold<double>(0.0, (sum, t) => sum + t.amount);
-        for (final row in splitItems) {
-          spent += row.readTable(_db.transactionSplits).amount;
+        for (final r in splitItems) {
+          spent += r.readTable(_db.transactionSplits).amount;
         }
 
         final percentage = budget.amountLimit > 0 ? (spent / budget.amountLimit) * 100 : 0.0;
+        final txCount = directTxs.length + splitItems.length;
 
         results.add(BudgetWithProgress(
           budget: budget,
           category: category,
           currentSpent: spent,
           percentage: percentage,
+          transactionCount: txCount,
         ));
       }
 
@@ -104,4 +108,8 @@ final budgetRepositoryProvider = Provider<BudgetRepository>((ref) {
 final currentMonthBudgetsProvider = StreamProvider<List<BudgetWithProgress>>((ref) {
   final now = DateTime.now();
   return ref.watch(budgetRepositoryProvider).watchBudgetsWithProgress(now);
+});
+
+final monthBudgetsProvider = StreamProvider.family<List<BudgetWithProgress>, DateTime>((ref, month) {
+  return ref.watch(budgetRepositoryProvider).watchBudgetsWithProgress(month);
 });

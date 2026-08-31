@@ -235,17 +235,39 @@ class TransactionBatchActionBar extends ConsumerWidget {
     );
 
     if (confirmed == true) {
-      final deleted = await ref.read(transactionRepositoryProvider).batchDeleteTransactions(selectedIds.toList());
+      final repo = ref.read(transactionRepositoryProvider);
+      final ids = selectedIds.toList();
+      final snapshots = await repo.getBatchTransactionSnapshots(ids);
+      final deleted = await repo.batchDeleteTransactions(ids);
       onClearSelection();
+
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.clearSnackBars();
+        messenger.showSnackBar(
           SnackBar(
             content: Text('🗑️ Deleted $deleted transaction${deleted > 1 ? "s" : ""}'),
-            backgroundColor: AppColors.expense,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'UNDO',
+              textColor: Colors.amber,
+              onPressed: () async {
+                await repo.restoreBatchTransactionSnapshots(snapshots);
+                messenger.clearSnackBars();
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text('✓ Restored $deleted transaction${deleted > 1 ? "s" : ""}'),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
           ),
         );
       }
     }
+
+
   }
 
   @override

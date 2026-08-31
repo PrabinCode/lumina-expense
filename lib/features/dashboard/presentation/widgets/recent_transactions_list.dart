@@ -323,12 +323,37 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
                         ),
                         child: const Icon(Icons.delete_outline, color: Colors.white),
                       ),
-                      onDismissed: (_) {
-                        ref.read(transactionRepositoryProvider).deleteTransaction(tx.id);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Deleted "${tx.title}"')),
+                      onDismissed: (_) async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final repo = ref.read(transactionRepositoryProvider);
+                        final snapshot = await repo.getTransactionSnapshot(tx.id);
+                        await repo.deleteTransaction(tx.id);
+
+                        messenger.clearSnackBars();
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text('Deleted "${tx.title}"'),
+                            duration: const Duration(seconds: 5),
+                            action: SnackBarAction(
+                              label: 'UNDO',
+                              textColor: AppColors.income,
+                              onPressed: () async {
+                                if (snapshot != null) {
+                                  await repo.restoreTransactionSnapshot(snapshot);
+                                  messenger.clearSnackBars();
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text('✓ Restored "${tx.title}"'),
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          ),
                         );
                       },
+
                       child: Material(
                         color: isSelected
                             ? AppColors.primary.withValues(alpha: 0.15)

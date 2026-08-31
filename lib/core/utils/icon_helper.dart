@@ -49,4 +49,7 @@ class IconHelper {
         return Icons.category_rounded;
     }
   }
+
+  static IconData getCategoryIcon(String? iconName) => getIcon(iconName);
 }
+

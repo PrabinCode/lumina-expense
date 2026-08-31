@@ -30,5 +30,10 @@ class CurrencyFormatter {
     }
     return format(amount, currencySymbol: symbol);
   }
+
+  static String compact(double amount, {String? currencySymbol, bool mask = false}) =>
+      formatCompact(amount, currencySymbol: currencySymbol, mask: mask);
 }
+
+
 
