@@ -10,8 +10,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Fixed` - for any bug fixes.
 - `Other` - for technical and release chores.
 
-## [Unreleased]
+## [v1.3.0] - 2026-09-01
 ### Added
+
 - **Privacy Mask & Public Shield**: One-tap eye toggle in Dashboard and long-press on balance cards to instantly obscure financial balances (`$••••`) in public environments.
 - **App Launcher Quick Shortcuts**: Static Android shortcuts (`shortcuts.xml`) with `lumina://` deep links for instant "Add Expense", "Add Income", and "Health Score" entry from home screen.
 - **Advanced Boolean & Prefix Power Search**: Full query engine with prefixes (`cat:`, `acc:`, `tag:`, `note:`, `type:`, `amount:`, `date:`), comparative operators (`>`, `<`, `<=`, `>=`), negation (`-`), and logical operators (`&&`, `||`) with live token suggestions.
