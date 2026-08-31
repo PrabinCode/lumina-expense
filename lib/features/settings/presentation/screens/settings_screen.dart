@@ -17,6 +17,8 @@ import '../../../health/presentation/screens/financial_health_screen.dart';
 import '../../../subscriptions/presentation/screens/subscriptions_screen.dart';
 import '../../../onboarding/presentation/screens/onboarding_screen.dart';
 import 'feedback_report_sheet.dart';
+import 'storage_maintenance_screen.dart';
+import 'theme_selection_sheet.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -314,8 +316,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 child: Column(
                   children: [
-                    // Theme Mode
+                    // Theme Mode & Designer Palettes
                     ListTile(
+                      onTap: () => ThemeSelectionSheet.show(context),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       leading: Container(
                         padding: const EdgeInsets.all(10),
@@ -325,31 +328,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                         child: const Icon(Icons.palette_outlined, color: AppColors.primary, size: 20),
                       ),
-                      title: const Text('Theme Mode', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      title: const Text('Theme & Palette', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                       subtitle: Text(
-                        _getThemeLabel(currentTheme),
+                        '${_getThemeLabel(currentTheme)} • ${ref.watch(themeStateProvider).palette.name}',
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
-                      trailing: DropdownButtonHideUnderline(
-                        child: DropdownButton<AppThemeMode>(
-                          value: currentTheme,
-                          icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                          items: const [
-                            DropdownMenuItem(value: AppThemeMode.system, child: Text('System Default', style: TextStyle(fontSize: 13))),
-                            DropdownMenuItem(value: AppThemeMode.light, child: Text('Light Mode', style: TextStyle(fontSize: 13))),
-                            DropdownMenuItem(value: AppThemeMode.dark, child: Text('Dark Slate', style: TextStyle(fontSize: 13))),
-                            DropdownMenuItem(value: AppThemeMode.amoled, child: Text('AMOLED Black', style: TextStyle(fontSize: 13))),
-                          ],
-                          onChanged: (mode) {
-                            if (mode != null) {
-                              ref.read(themeModeProvider.notifier).setTheme(mode);
-                            }
-                          },
-                        ),
-                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
                     ),
 
                     const Divider(height: 1),
+
 
                     // Base Currency
                     ListTile(
@@ -542,8 +530,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 iconColor: AppColors.primary,
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen())),
               ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Storage & Maintenance',
+                subtitle: 'SQLite VACUUM, integrity validation & cache cleaner',
+                icon: Icons.storage_rounded,
+                iconColor: const Color(0xFF6366F1),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StorageMaintenanceScreen())),
+              ),
 
               const SizedBox(height: 24),
+
 
               // ─── Section 5: Streamlined About & Support ───
               const Row(

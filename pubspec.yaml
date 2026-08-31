@@ -62,6 +62,8 @@ dependencies:
 
   # Persistent key-value storage for settings
   shared_preferences: ^2.3.4
+  crypto: ^3.0.7
+  encrypt: ^5.0.3
 
 dev_dependencies:
   flutter_test:

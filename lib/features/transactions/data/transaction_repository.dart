@@ -265,7 +265,48 @@ class TransactionRepository {
       return results;
     });
   }
+
+  /// Bulk update category for multiple transactions
+  Future<int> batchUpdateCategory(List<String> transactionIds, String categoryId) async {
+    if (transactionIds.isEmpty) return 0;
+    return (_db.update(_db.transactions)..where((t) => t.id.isIn(transactionIds))).write(
+      TransactionsCompanion(categoryId: Value(categoryId)),
+    );
+  }
+
+  /// Bulk update account for multiple transactions
+  Future<int> batchUpdateAccount(List<String> transactionIds, String accountId) async {
+    if (transactionIds.isEmpty) return 0;
+    return (_db.update(_db.transactions)..where((t) => t.id.isIn(transactionIds))).write(
+      TransactionsCompanion(accountId: Value(accountId)),
+    );
+  }
+
+  /// Bulk add tag to multiple transactions
+  Future<void> batchAddTag(List<String> transactionIds, String newTag) async {
+    if (transactionIds.isEmpty || newTag.trim().isEmpty) return;
+    final tag = newTag.trim();
+    final txs = await (_db.select(_db.transactions)..where((t) => t.id.isIn(transactionIds))).get();
+    for (final tx in txs) {
+      final existingTags = (tx.tags ?? '').split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
+      if (!existingTags.contains(tag)) {
+        existingTags.add(tag);
+        await (_db.update(_db.transactions)..where((t) => t.id.equals(tx.id))).write(
+          TransactionsCompanion(tags: Value(existingTags.join(','))),
+        );
+      }
+    }
+  }
+
+  /// Bulk delete transactions
+  Future<int> batchDeleteTransactions(List<String> transactionIds) async {
+    if (transactionIds.isEmpty) return 0;
+    await (_db.delete(_db.transactionSplits)..where((s) => s.transactionId.isIn(transactionIds))).go();
+    return (_db.delete(_db.transactions)..where((t) => t.id.isIn(transactionIds))).go();
+  }
 }
+
+
 
 final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);

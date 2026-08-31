@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../services/backup_restore_service.dart';
+import 'csv_mapper_screen.dart';
 
 class BackupScreen extends ConsumerStatefulWidget {
   const BackupScreen({super.key});
@@ -56,16 +57,97 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     }
   }
 
+  Future<String?> _promptPasswordDialog({
+    required String title,
+    required String description,
+    bool isNew = false,
+  }) async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(description, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: isNew ? 'Set Backup Password' : 'Enter Password',
+                prefixIcon: const Icon(Icons.lock_outline_rounded),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: Text(isNew ? 'Encrypt & Save' : 'Unlock'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _handleCreateBackup() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Choose Backup Type', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.lock_rounded, color: Colors.amber),
+              title: const Text('Encrypted Backup (.lumina.enc)', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Password-protected with AES-256 encryption', style: TextStyle(fontSize: 12)),
+              onTap: () => Navigator.pop(ctx, 'encrypted'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.file_copy_outlined, color: AppColors.primary),
+              title: const Text('Standard JSON Backup (.json)', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Standard plain JSON export', style: TextStyle(fontSize: 12)),
+              onTap: () => Navigator.pop(ctx, 'plain'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (choice == null) return;
+
+    String? password;
+    if (choice == 'encrypted') {
+      password = await _promptPasswordDialog(
+        title: 'Encrypt Backup',
+        description: 'Set a password to cipher-lock your financial database archive with AES-256.',
+        isNew: true,
+      );
+      if (password == null || password.trim().isEmpty) return;
+    }
+
     setState(() => _isLoading = true);
     try {
       final service = ref.read(backupRestoreServiceProvider);
-      final path = await service.createBackup();
+      final path = await service.createBackup(password: password);
       await _loadData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Backup created successfully!\nSaved to: $path'),
+            content: Text('${choice == "encrypted" ? "🔒 Encrypted backup" : "Backup"} created successfully!\nSaved to: $path'),
             duration: const Duration(seconds: 4),
           ),
         );
@@ -106,9 +188,37 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   }
 
   Future<void> _handleShareJson() async {
+    final password = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Export Backup Snapshot', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Would you like to encrypt this backup with a password before sharing?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, ''), child: const Text('Plain JSON')),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.black87),
+            icon: const Icon(Icons.lock_rounded, size: 16),
+            label: const Text('Set Password'),
+            onPressed: () async {
+              final pwd = await _promptPasswordDialog(
+                title: 'Set Backup Password',
+                description: 'Enter a password to encrypt the shared backup file.',
+                isNew: true,
+              );
+              if (ctx.mounted) Navigator.pop(ctx, pwd);
+            },
+          ),
+        ],
+      ),
+    );
+
+    if (password == null) return;
+
     setState(() => _isLoading = true);
     try {
-      await ref.read(backupRestoreServiceProvider).exportBackupJson();
+      await ref.read(backupRestoreServiceProvider).exportBackupJson(
+            password: password.isEmpty ? null : password,
+          );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -135,11 +245,12 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     }
   }
 
-  Future<void> _confirmAndRestore(String filePath) async {
+
+  Future<void> _confirmAndRestore(String filePath, {String? password}) async {
     setState(() => _isLoading = true);
     try {
       final service = ref.read(backupRestoreServiceProvider);
-      final preview = await service.inspectBackupFile(filePath);
+      final preview = await service.inspectBackupFile(filePath, password: password);
 
       if (!mounted) return;
 
@@ -147,7 +258,12 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
         context: context,
         builder: (context) {
           return AlertDialog(
-            title: const Text('Confirm Restore', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: Row(
+              children: [
+                if (password != null) const Padding(padding: EdgeInsets.only(right: 8), child: Icon(Icons.lock_open_rounded, color: Colors.amber, size: 20)),
+                const Text('Confirm Restore', style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,7 +302,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       );
 
       if (confirmed == true) {
-        await service.restoreFromFile(filePath);
+        await service.restoreFromFile(filePath, password: password);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Database restored successfully! ✓')),
@@ -195,14 +311,28 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Restore error: $e')),
-        );
+        if (e.toString().contains('PASSWORD_REQUIRED') || e.toString().contains('Incorrect password')) {
+          final pwd = await _promptPasswordDialog(
+            title: 'Enter Backup Password',
+            description: 'This backup archive is encrypted. Enter your password to decrypt.',
+          );
+          if (pwd != null && pwd.isNotEmpty) {
+            await _confirmAndRestore(filePath, password: pwd);
+            return;
+          }
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Restore error: $e')),
+          );
+        }
       }
+
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   Future<void> _handleRestoreFromFilePicker() async {
     setState(() => _isLoading = true);
@@ -256,15 +386,28 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Generate Sample Demo Data?'),
+        title: const Row(
+          children: [
+            Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 24),
+            SizedBox(width: 8),
+            Text('Populate Sample Data'),
+          ],
+        ),
         content: const Text(
-          'This will populate realistic transactions, categories, budgets, and debts for testing and demonstration.',
+          'This will generate a rich, authentic showcase dataset:\n\n'
+          '• 4 Accounts (Checking, Cash, High-Yield Savings, Credit Card)\n'
+          '• 25+ Categorized Transactions across the last 30 days\n'
+          '• Itemized Split Transactions (Costco Superstore & Weekend Trip)\n'
+          '• 5 Monthly Category Budgets with active progress\n'
+          '• 4 Financial Savings Goals with target dates\n'
+          '• 4 Debt / Loan (IOU) tracking records\n'
+          '• 5 Recurring Subscriptions (Netflix, Spotify, Fiber Internet, etc.)',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Generate'),
+            child: const Text('Populate Data'),
           ),
         ],
       ),
@@ -276,11 +419,15 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sample demo data generated successfully!')),
+          const SnackBar(
+            content: Text('🎉 Rich demo data populated: 4 accounts, 25+ transactions, splits, budgets, goals & subscriptions!'),
+            duration: Duration(seconds: 4),
+          ),
         );
       }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -304,7 +451,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ─── Mihon-Style Storage Location Card ───
+                  // ─── Storage Location Card ───
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -437,10 +584,25 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 10),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      icon: const Icon(Icons.input_rounded, size: 18, color: AppColors.primary),
+                      label: const Text('Import from CSV / External Apps (Migration Wizard)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CsvMapperScreen())),
+                    ),
+                  ),
 
                   const SizedBox(height: 24),
 
-                  // ─── Local Backups in Storage (Mihon-style List) ───
+
+                  // ─── Local Backups in Storage ───
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -503,21 +665,45 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                             leading: Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.15),
+                                color: backup.isEncrypted
+                                    ? Colors.amber.withValues(alpha: 0.15)
+                                    : AppColors.primary.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: const Icon(Icons.description_outlined, color: AppColors.primary, size: 22),
+                              child: Icon(
+                                backup.isEncrypted ? Icons.lock_outline_rounded : Icons.description_outlined,
+                                color: backup.isEncrypted ? Colors.amber : AppColors.primary,
+                                size: 22,
+                              ),
                             ),
-                            title: Text(
-                              backup.fileName,
-                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    backup.fileName,
+                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (backup.isEncrypted) ...[
+                                  const SizedBox(width: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text('AES-256', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.amber)),
+                                  ),
+                                ],
+                              ],
                             ),
                             subtitle: Text(
                               '${backup.formattedDate} • ${backup.formattedSize}',
                               style: const TextStyle(fontSize: 11, color: Colors.grey),
                             ),
+
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [

@@ -97,7 +97,12 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
                             notes: drift.Value(notesController.text.trim().isEmpty ? null : notesController.text.trim()),
                           ),
                         );
-                    if (context.mounted) Navigator.pop(context);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('✓ Recorded ${type == "lent" ? "loan to" : "debt from"} $name (${CurrencyFormatter.format(amount)})')),
+                      );
+                    }
                   },
                   child: const Text('Save'),
                 ),
@@ -113,15 +118,16 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
     final remaining = debt.amount - debt.settledAmount;
     final settleController = TextEditingController(text: remaining.toStringAsFixed(2));
 
+
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('Record Repayment for ${debt.personName}'),
+          title: Text('Settle / Repay: ${debt.personName}'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Outstanding balance: ${CurrencyFormatter.format(remaining)}'),
+              Text('Original Total: ${CurrencyFormatter.format(debt.amount)}'),
               const SizedBox(height: 12),
               TextField(
                 controller: settleController,
@@ -142,7 +148,12 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
                 if (amount <= 0) return;
 
                 await ref.read(debtRepositoryProvider).recordSettlement(debt.id, amount);
-                if (context.mounted) Navigator.pop(context);
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('✓ Repayment recorded for ${debt.personName} (${CurrencyFormatter.format(amount)})')),
+                  );
+                }
               },
               child: const Text('Confirm Repayment'),
             ),

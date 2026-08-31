@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/providers/privacy_mask_provider.dart';
 import '../../../health/presentation/widgets/health_score_card.dart';
 import '../widgets/dashboard_goals_card.dart';
 import '../widgets/dashboard_subscriptions_card.dart';
@@ -13,6 +14,8 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isMasked = ref.watch(privacyMaskProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -31,7 +34,19 @@ class DashboardScreen extends ConsumerWidget {
             const Text('Lumina Expense'),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: Icon(
+              isMasked ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+              color: isMasked ? Colors.amber : null,
+            ),
+            tooltip: isMasked ? 'Reveal Balances' : 'Hide Balances (Privacy Shield)',
+            onPressed: () => ref.read(privacyMaskProvider.notifier).toggle(),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
+
       body: const SingleChildScrollView(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(

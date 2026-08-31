@@ -25,16 +25,17 @@ void main() {
     await backupService.seedDemoData();
 
     final txs = await db.select(db.transactions).get();
-    expect(txs.length, greaterThan(5));
+    expect(txs.length, greaterThan(20));
 
     final budgets = await db.select(db.budgets).get();
-    expect(budgets.length, greaterThan(1));
+    expect(budgets.length, greaterThanOrEqualTo(3));
 
     final debts = await db.select(db.debts).get();
-    expect(debts.length, 2);
+    expect(debts.length, greaterThanOrEqualTo(3));
 
     final goals = await db.select(db.goals).get();
-    expect(goals.length, 2);
+    expect(goals.length, greaterThanOrEqualTo(3));
+
   });
 
   test('Create backup, inspect metadata preview, and restore to empty db', () async {

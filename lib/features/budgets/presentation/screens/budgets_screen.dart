@@ -81,9 +81,15 @@ class BudgetsScreen extends ConsumerWidget {
                             amountLimit: amount,
                           ),
                         );
-                    if (context.mounted) Navigator.pop(context);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('✓ Budget created (${CurrencyFormatter.format(amount)})')),
+                      );
+                    }
                   },
                   child: const Text('Save Budget'),
+
                 ),
               ],
             );

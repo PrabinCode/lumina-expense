@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_add_expense_short">Add Expense</string>
+    <string name="shortcut_add_expense_long">Quick Add Expense</string>
+    <string name="shortcut_add_income_short">Add Income</string>
+    <string name="shortcut_add_income_long">Quick Add Income</string>
+    <string name="shortcut_health_short">Health Score</string>
+    <string name="shortcut_health_long">View Financial Health Score</string>
+</resources>

@@ -12,7 +12,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/database/default_data.dart';
 import '../../../core/providers/database_provider.dart';
+import 'backup_crypto_service.dart';
+
 
 class BackupPreview {
   final int version;
@@ -45,12 +48,14 @@ class BackupFileInfo {
   final String fileName;
   final int sizeBytes;
   final DateTime modifiedAt;
+  final bool isEncrypted;
 
   BackupFileInfo({
     required this.path,
     required this.fileName,
     required this.sizeBytes,
     required this.modifiedAt,
+    this.isEncrypted = false,
   });
 
   String get formattedSize {
@@ -63,6 +68,7 @@ class BackupFileInfo {
     return DateFormat('MMM d, yyyy • hh:mm a').format(modifiedAt);
   }
 }
+
 
 class BackupRestoreService {
   static const _keyBackupDir = 'backup_storage_location';
@@ -125,8 +131,9 @@ class BackupRestoreService {
     }
   }
 
-  /// Launch system folder picker to select storage location (like Mihon)
+  /// Launch system folder picker to select storage location
   Future<String?> pickAndSetStorageDirectory() async {
+
     final selected = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Select Backup Storage Location',
     );
@@ -149,17 +156,19 @@ class BackupRestoreService {
     final backups = <BackupFileInfo>[];
 
     for (final entity in entities) {
-      if (entity is File && entity.path.endsWith('.json')) {
+      if (entity is File && (entity.path.endsWith('.json') || entity.path.endsWith('.enc') || entity.path.endsWith('.lumina.enc'))) {
         final stat = await entity.stat();
         final name = entity.uri.pathSegments.isNotEmpty
             ? entity.uri.pathSegments.last
             : entity.path.split(Platform.pathSeparator).last;
+        final isEncrypted = entity.path.endsWith('.enc') || entity.path.endsWith('.lumina.enc');
 
         backups.add(BackupFileInfo(
           path: entity.path,
           fileName: name,
           sizeBytes: stat.size,
           modifiedAt: stat.modified,
+          isEncrypted: isEncrypted,
         ));
       }
     }
@@ -168,6 +177,7 @@ class BackupRestoreService {
     backups.sort((a, b) => b.modifiedAt.compareTo(a.modifiedAt));
     return backups;
   }
+
 
   /// Delete a backup file
   Future<void> deleteBackup(String filePath) async {
@@ -323,7 +333,7 @@ class BackupRestoreService {
   }
 
   /// Create backup in configured storage location and auto-prune oldest
-  Future<String> createBackup({String? targetDir}) async {
+  Future<String> createBackup({String? targetDir, String? password}) async {
     final payload = await _buildBackupPayload();
     final jsonString = const JsonEncoder.withIndent('  ').convert(payload);
 
@@ -334,10 +344,17 @@ class BackupRestoreService {
     }
 
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final filePath = '${dir.path}/lumina_backup_$timestamp.json';
+    final isEnc = password != null && password.trim().isNotEmpty;
+    final fileName = isEnc ? 'lumina_backup_$timestamp.lumina.enc' : 'lumina_backup_$timestamp.json';
+    final filePath = '${dir.path}/$fileName';
 
     final file = File(filePath);
-    await file.writeAsString(jsonString);
+    if (isEnc) {
+      final encrypted = BackupCryptoService.encryptJson(jsonString, password.trim());
+      await file.writeAsString(encrypted);
+    } else {
+      await file.writeAsString(jsonString);
+    }
 
     // Auto-prune old backups if limit is reached
     final maxFiles = await getMaxBackupFiles();
@@ -352,27 +369,35 @@ class BackupRestoreService {
   }
 
   /// Export Backup to temporary location and trigger Native Share Sheet
-  Future<String> exportBackupJson() async {
+  Future<String> exportBackupJson({String? password}) async {
     final payload = await _buildBackupPayload();
     final jsonString = const JsonEncoder.withIndent('  ').convert(payload);
 
     final tempDir = await getTemporaryDirectory();
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final filePath = '${tempDir.path}/lumina_backup_$timestamp.json';
+    final isEnc = password != null && password.trim().isNotEmpty;
+    final fileName = isEnc ? 'lumina_backup_$timestamp.lumina.enc' : 'lumina_backup_$timestamp.json';
+    final filePath = '${tempDir.path}/$fileName';
 
     final file = File(filePath);
-    await file.writeAsString(jsonString);
+    if (isEnc) {
+      final encrypted = BackupCryptoService.encryptJson(jsonString, password.trim());
+      await file.writeAsString(encrypted);
+    } else {
+      await file.writeAsString(jsonString);
+    }
 
     await Share.shareXFiles(
       [XFile(filePath)],
       subject: 'Lumina Expense Backup ($timestamp)',
-      text: 'Lumina Expense offline database backup snapshot.',
+      text: isEnc ? 'Lumina Expense encrypted database backup snapshot.' : 'Lumina Expense offline database backup snapshot.',
     );
 
     return filePath;
   }
 
   /// Create CSV Export in configured directory
+
   Future<String> createCsvExport({String? targetDir}) async {
     final cat = _db.categories;
     final srcAcc = _db.alias(_db.accounts, 'src');
@@ -482,10 +507,18 @@ class BackupRestoreService {
     return filePath;
   }
 
-  /// Inspect a backup file by path
-  Future<BackupPreview> inspectBackupFile(String filePath) async {
+  /// Inspect a backup file by path (supports encrypted and unencrypted backups)
+  Future<BackupPreview> inspectBackupFile(String filePath, {String? password}) async {
     final file = File(filePath);
-    final content = await file.readAsString();
+    String content = await file.readAsString();
+
+    if (BackupCryptoService.isEncrypted(content)) {
+      if (password == null || password.trim().isEmpty) {
+        throw const FormatException('PASSWORD_REQUIRED');
+      }
+      content = BackupCryptoService.decryptJson(content, password.trim());
+    }
+
     final Map<String, dynamic> json = jsonDecode(content);
 
     if (!json.containsKey('data') || !json.containsKey('version')) {
@@ -509,10 +542,10 @@ class BackupRestoreService {
   }
 
   /// Pick a backup file from anywhere via file picker
-  Future<({String filePath, BackupPreview preview})?> pickAndInspectBackup() async {
+  Future<({String filePath, BackupPreview preview, bool isEncrypted})?> pickAndInspectBackup({String? password}) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['json'],
+      allowedExtensions: ['json', 'enc'],
     );
 
     if (result == null || result.files.isEmpty || result.files.single.path == null) {
@@ -520,16 +553,29 @@ class BackupRestoreService {
     }
 
     final path = result.files.single.path!;
-    final preview = await inspectBackupFile(path);
-    return (filePath: path, preview: preview);
+    final file = File(path);
+    final content = await file.readAsString();
+    final isEnc = BackupCryptoService.isEncrypted(content) || path.endsWith('.enc');
+
+    final preview = await inspectBackupFile(path, password: password);
+    return (filePath: path, preview: preview, isEncrypted: isEnc);
   }
 
   /// Restore database from JSON backup file
-  Future<void> restoreFromFile(String filePath) async {
+  Future<void> restoreFromFile(String filePath, {String? password}) async {
     final file = File(filePath);
-    final content = await file.readAsString();
+    String content = await file.readAsString();
+
+    if (BackupCryptoService.isEncrypted(content)) {
+      if (password == null || password.trim().isEmpty) {
+        throw const FormatException('PASSWORD_REQUIRED');
+      }
+      content = BackupCryptoService.decryptJson(content, password.trim());
+    }
+
     final Map<String, dynamic> json = jsonDecode(content);
     final data = json['data'] as Map<String, dynamic>;
+
 
     await _db.transaction(() async {
       // 1. Clear existing data
@@ -693,68 +739,153 @@ class BackupRestoreService {
     final now = DateTime.now();
 
     await _db.transaction(() async {
-      final existingCats = await _db.select(_db.categories).get();
-      final catMap = {for (var c in existingCats) c.name: c.id};
-
+      // 1. Clear all existing data
       await _db.delete(_db.recurringTransactions).go();
       await _db.delete(_db.transactionSplits).go();
       await _db.delete(_db.transactions).go();
       await _db.delete(_db.debts).go();
       await _db.delete(_db.budgets).go();
       await _db.delete(_db.goals).go();
+      await _db.delete(_db.categories).go();
+      await _db.delete(_db.accounts).go();
 
-      if (catMap.containsKey('Food & Dining')) {
-        await _db.into(_db.budgets).insert(
-              BudgetsCompanion.insert(
-                id: uuid.v4(),
-                categoryId: catMap['Food & Dining']!,
-                amountLimit: 400.0,
-              ),
-            );
-      }
-      if (catMap.containsKey('Groceries')) {
-        await _db.into(_db.budgets).insert(
-              BudgetsCompanion.insert(
-                id: uuid.v4(),
-                categoryId: catMap['Groceries']!,
-                amountLimit: 350.0,
-              ),
-            );
-      }
-      if (catMap.containsKey('Entertainment')) {
-        await _db.into(_db.budgets).insert(
-              BudgetsCompanion.insert(
-                id: uuid.v4(),
-                categoryId: catMap['Entertainment']!,
-                amountLimit: 150.0,
+      // 2. Insert Standard Categories
+      for (final cat in DefaultData.categories) {
+        await _db.into(_db.categories).insert(
+              CategoriesCompanion.insert(
+                id: cat.id,
+                name: cat.name,
+                type: cat.type,
+                icon: Value(cat.icon),
+                color: Value(cat.color),
+                isDefault: const Value(true),
               ),
             );
       }
 
-      final sampleTxs = [
-        (title: 'Monthly Salary', amount: 3500.0, type: 'income', cat: 'Salary', daysAgo: 25),
-        (title: 'Freelance Design Project', amount: 850.0, type: 'income', cat: 'Freelance & Projects', daysAgo: 10),
-        (title: 'Supermarket Weekly Groceries', amount: 112.50, type: 'expense', cat: 'Groceries', daysAgo: 1),
-        (title: 'Coffee & Breakfast', amount: 8.50, type: 'expense', cat: 'Food & Dining', daysAgo: 1),
-        (title: 'Dinner with Friends', amount: 48.00, type: 'expense', cat: 'Food & Dining', daysAgo: 2),
-        (title: 'Gasoline refill', amount: 45.00, type: 'expense', cat: 'Transportation', daysAgo: 3),
-        (title: 'Apartment Rent', amount: 1200.0, type: 'expense', cat: 'Housing & Rent', daysAgo: 15),
-        (title: 'High-speed Internet Bill', amount: 60.00, type: 'expense', cat: 'Bills & Utilities', daysAgo: 12),
-        (title: 'Netflix & Spotify Subscriptions', amount: 25.98, type: 'expense', cat: 'Entertainment', daysAgo: 8),
-        (title: 'Pharmacy Vitamins', amount: 32.40, type: 'expense', cat: 'Health & Medical', daysAgo: 5),
-        (title: 'Running Shoes', amount: 85.00, type: 'expense', cat: 'Shopping', daysAgo: 7),
-        (title: 'Weekend Taxi', amount: 18.20, type: 'expense', cat: 'Transportation', daysAgo: 4),
-        (title: 'Lunch Burrito Bowl', amount: 14.50, type: 'expense', cat: 'Food & Dining', daysAgo: 0),
+      final existingCats = await _db.select(_db.categories).get();
+      final catMap = {for (var c in existingCats) c.name: c.id};
+
+      // 3. Insert Realistic Accounts
+      const bankAccId = DefaultData.defaultBankId;
+      const cashAccId = DefaultData.defaultAccountId;
+      const savingsAccId = 'acc_high_yield_savings';
+      const creditAccId = 'acc_rewards_credit';
+
+      await _db.into(_db.accounts).insert(
+            AccountsCompanion.insert(
+              id: bankAccId,
+              name: 'Main Checking Account',
+              type: 'bank',
+              initialBalance: const Value(4250.00),
+              currency: const Value('USD'),
+              icon: const Value('account_balance'),
+              color: const Value(0xFF1E88E5),
+            ),
+          );
+
+      await _db.into(_db.accounts).insert(
+            AccountsCompanion.insert(
+              id: cashAccId,
+              name: 'Daily Cash Wallet',
+              type: 'cash',
+              initialBalance: const Value(320.00),
+              currency: const Value('USD'),
+              icon: const Value('account_balance_wallet'),
+              color: const Value(0xFF43A047),
+            ),
+          );
+
+      await _db.into(_db.accounts).insert(
+            AccountsCompanion.insert(
+              id: savingsAccId,
+              name: 'High-Yield Savings',
+              type: 'savings',
+              initialBalance: const Value(8500.00),
+              currency: const Value('USD'),
+              icon: const Value('savings'),
+              color: const Value(0xFFFB8C00),
+            ),
+          );
+
+      await _db.into(_db.accounts).insert(
+            AccountsCompanion.insert(
+              id: creditAccId,
+              name: 'Rewards Credit Card',
+              type: 'credit',
+              initialBalance: const Value(0.00),
+              currency: const Value('USD'),
+              icon: const Value('credit_card'),
+              color: const Value(0xFF8E24AA),
+            ),
+          );
+
+      // 4. Insert Active Monthly Budgets
+      final budgetConfigs = [
+        ('Food & Dining', 450.0),
+        ('Groceries', 400.0),
+        ('Shopping', 250.0),
+        ('Entertainment', 150.0),
+        ('Transportation', 200.0),
       ];
 
-      final accounts = await _db.select(_db.accounts).get();
-      final defaultAcc = accounts.isNotEmpty ? accounts.first.id : 'acc_default_cash';
-      final bankAcc = accounts.length > 1 ? accounts[1].id : defaultAcc;
+      for (final b in budgetConfigs) {
+        final catId = catMap[b.$1];
+        if (catId != null) {
+          await _db.into(_db.budgets).insert(
+                BudgetsCompanion.insert(
+                  id: uuid.v4(),
+                  categoryId: catId,
+                  amountLimit: b.$2,
+                ),
+              );
+        }
+      }
+
+      // 5. Insert Rich Historical Transactions (Past 30 Days)
+      final sampleTxs = [
+        // Income entries
+        (title: 'Tech Lead Monthly Salary', amount: 4500.0, type: 'income', cat: 'Salary', acc: bankAccId, daysAgo: 25, tags: '#work,#salary', note: 'Direct deposit paycheck'),
+        (title: 'Freelance Mobile UI/UX Project', amount: 1250.0, type: 'income', cat: 'Freelance & Projects', acc: bankAccId, daysAgo: 12, tags: '#freelance', note: 'Client milestone completion payment'),
+        (title: 'Quarterly S&P500 Dividends', amount: 185.40, type: 'income', cat: 'Investments & Dividends', acc: savingsAccId, daysAgo: 18, tags: '#investments', note: 'Vanguard portfolio dividend distribution'),
+        (title: 'Birthday Gift from Family', amount: 100.0, type: 'income', cat: 'Gifts & Grants', acc: cashAccId, daysAgo: 6, tags: '#gift', note: 'Birthday card cash'),
+
+        // Housing & Fixed Bills
+        (title: 'Downtown Apartment Monthly Lease', amount: 1350.0, type: 'expense', cat: 'Housing & Rent', acc: bankAccId, daysAgo: 24, tags: '#rent,#essential', note: 'Monthly apartment rent transfer'),
+        (title: 'High-speed Fiber Internet (1Gbps)', amount: 70.0, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 15, tags: '#bills', note: 'Home broadband connection'),
+        (title: 'Clean Energy Electric Utility', amount: 85.40, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 10, tags: '#utilities', note: 'Monthly electricity consumption'),
+        (title: 'Unlimited 5G Mobile Plan', amount: 45.0, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 8, tags: '#bills', note: 'Carrier phone bill'),
+
+        // Groceries & Food
+        (title: 'Whole Foods Market Weekly Stockup', amount: 142.60, type: 'expense', cat: 'Groceries', acc: creditAccId, daysAgo: 2, tags: '#groceries', note: 'Organic fruits, vegetables, olive oil & chicken'),
+        (title: "Trader Joe's Healthy Snacks & Bakery", amount: 58.30, type: 'expense', cat: 'Groceries', acc: creditAccId, daysAgo: 7, tags: '#groceries', note: 'Almond butter, trail mix, sourdough bread'),
+        (title: 'Local Artisan French Bakery', amount: 14.20, type: 'expense', cat: 'Groceries', acc: cashAccId, daysAgo: 1, tags: '#bakery', note: 'Croissants and fresh baguette'),
+        (title: 'Artisan Espresso & Morning Pastry', amount: 7.50, type: 'expense', cat: 'Food & Dining', acc: cashAccId, daysAgo: 0, tags: '#coffee,#lifestyle', note: 'Morning caffeine boost'),
+        (title: 'Chipotle Burrito Bowl & Guacamole', amount: 15.80, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 1, tags: '#dining', note: 'Quick lunch break'),
+        (title: 'Italian Trattoria Dinner with Friends', amount: 68.00, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 4, tags: '#dining,#social', note: 'Woodfired pizza, pasta & wine'),
+        (title: 'Downtown Sushi Omakase Lunch', amount: 84.50, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 14, tags: '#dining', note: 'Business lunch meeting'),
+
+        // Transportation
+        (title: 'Shell Gasoline Full Tank Refill', amount: 52.00, type: 'expense', cat: 'Transportation', acc: creditAccId, daysAgo: 3, tags: '#car,#fuel', note: 'Premium unleaded fuel'),
+        (title: 'City Metro Transit Monthly Card', amount: 90.00, type: 'expense', cat: 'Transportation', acc: bankAccId, daysAgo: 20, tags: '#commute', note: 'Public transit subway pass'),
+        (title: 'Uber Ride to Airport Terminal', amount: 34.50, type: 'expense', cat: 'Transportation', acc: creditAccId, daysAgo: 9, tags: '#travel,#taxi', note: 'Early morning airport transfer'),
+
+        // Entertainment & Shopping
+        (title: 'IMAX Cinema Tickets & Popcorn Combo', amount: 38.00, type: 'expense', cat: 'Entertainment', acc: creditAccId, daysAgo: 5, tags: '#entertainment,#movies', note: 'Sci-fi movie premiere night'),
+        (title: 'Steam Games Summer Showcase Bundle', amount: 49.99, type: 'expense', cat: 'Entertainment', acc: creditAccId, daysAgo: 16, tags: '#gaming', note: 'Indie game package'),
+        (title: 'Nike Pegasus Running Shoes', amount: 110.00, type: 'expense', cat: 'Shopping', acc: creditAccId, daysAgo: 11, tags: '#fitness,#shopping', note: 'Marathon training footwear'),
+        (title: 'UNIQLO Merino Wool Knit Sweater', amount: 49.90, type: 'expense', cat: 'Shopping', acc: creditAccId, daysAgo: 19, tags: '#clothes', note: 'Autumn wardrobe staple'),
+        (title: 'Amazon Ergonomic Vertical Mouse', amount: 65.00, type: 'expense', cat: 'Shopping', acc: creditAccId, daysAgo: 13, tags: '#work,#office', note: 'Home desk ergonomic upgrade'),
+
+        // Health, Personal & Education
+        (title: 'CVS Pharmacy Vitamins & Cold Relief', amount: 28.75, type: 'expense', cat: 'Health & Medical', acc: creditAccId, daysAgo: 6, tags: '#health', note: 'Multivitamins & zinc tablets'),
+        (title: 'Routine Dental Hygiene Checkup', amount: 75.00, type: 'expense', cat: 'Health & Medical', acc: bankAccId, daysAgo: 21, tags: '#health,#dental', note: 'Annual preventative dental cleaning'),
+        (title: 'Udemy Mobile Architecture Masterclass', amount: 19.99, type: 'expense', cat: 'Education', acc: creditAccId, daysAgo: 17, tags: '#learning,#education', note: 'Online development course'),
+        (title: 'Gentlemen Barbershop Haircut & Styling', amount: 35.00, type: 'expense', cat: 'Personal Care', acc: cashAccId, daysAgo: 2, tags: '#grooming', note: 'Haircut and beard trim'),
+      ];
 
       for (final item in sampleTxs) {
         final categoryId = catMap[item.cat];
-        final targetAcc = item.type == 'income' ? bankAcc : (item.amount > 50 ? bankAcc : defaultAcc);
-
         await _db.into(_db.transactions).insert(
               TransactionsCompanion.insert(
                 id: uuid.v4(),
@@ -762,26 +893,38 @@ class BackupRestoreService {
                 amount: item.amount,
                 type: item.type,
                 categoryId: Value(categoryId),
-                accountId: targetAcc,
+                accountId: item.acc,
                 date: Value(now.subtract(Duration(days: item.daysAgo))),
+                tags: Value(item.tags),
+                note: Value(item.note),
+                isSplit: const Value(false),
+                createdAt: Value(now.subtract(Duration(days: item.daysAgo))),
               ),
             );
       }
 
-      // Sample Split Transaction
-      final splitTxId = uuid.v4();
+      // 6. Insert Multiple Itemized Split Transactions
+      final splitTx1Id = uuid.v4();
       final groceriesCatId = catMap['Groceries'];
       final diningCatId = catMap['Food & Dining'];
+      final utilitiesCatId = catMap['Bills & Utilities'];
+      final healthCatId = catMap['Health & Medical'];
+      final transportCatId = catMap['Transportation'];
+      final entertainmentCatId = catMap['Entertainment'];
 
+
+      // Split 1: Costco Superstore ($185.00)
       await _db.into(_db.transactions).insert(
             TransactionsCompanion.insert(
-              id: splitTxId,
-              title: 'Costco Superstore & Food Court',
-              amount: 120.0,
+              id: splitTx1Id,
+              title: 'Costco Wholesale Club Superstore',
+              amount: 185.0,
               type: 'expense',
-              accountId: bankAcc,
+              accountId: creditAccId,
               isSplit: const Value(true),
               date: Value(now.subtract(const Duration(days: 3))),
+              tags: const Value('#bulk,#shopping'),
+              note: const Value('Monthly Costco household and groceries haul'),
             ),
           );
 
@@ -789,36 +932,161 @@ class BackupRestoreService {
         await _db.into(_db.transactionSplits).insert(
               TransactionSplitsCompanion.insert(
                 id: uuid.v4(),
-                transactionId: splitTxId,
+                transactionId: splitTx1Id,
                 categoryId: groceriesCatId,
-                amount: 85.0,
-                note: const Value('Pantry & Bulk Groceries'),
+                amount: 115.0,
+                note: const Value('Pantry staples, organic eggs, salmon & berries'),
+              ),
+            );
+      }
+      if (utilitiesCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTx1Id,
+                categoryId: utilitiesCatId,
+                amount: 45.0,
+                note: const Value('Bulk laundry detergent & paper towels'),
+              ),
+            );
+      }
+      if (healthCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTx1Id,
+                categoryId: healthCatId,
+                amount: 25.0,
+                note: const Value('Electrolyte powder & multivitamin gummies'),
               ),
             );
       }
 
+      // Split 2: Weekend Mountain Trip Split ($240.00)
+      final splitTx2Id = uuid.v4();
+      await _db.into(_db.transactions).insert(
+            TransactionsCompanion.insert(
+              id: splitTx2Id,
+              title: 'Weekend Mountain Cabin Getaway',
+              amount: 240.0,
+              type: 'expense',
+              accountId: creditAccId,
+              isSplit: const Value(true),
+              date: Value(now.subtract(const Duration(days: 15))),
+              tags: const Value('#vacation,#trip'),
+              note: const Value('Cabin rental expenses shared with friends'),
+            ),
+          );
+
+      if (transportCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTx2Id,
+                categoryId: transportCatId,
+                amount: 70.0,
+                note: const Value('Highway toll passes & SUV fuel'),
+              ),
+            );
+      }
       if (diningCatId != null) {
         await _db.into(_db.transactionSplits).insert(
               TransactionSplitsCompanion.insert(
                 id: uuid.v4(),
-                transactionId: splitTxId,
+                transactionId: splitTx2Id,
                 categoryId: diningCatId,
-                amount: 35.0,
-                note: const Value('Food Court Pizza & Drinks'),
+                amount: 120.0,
+                note: const Value('Group BBQ cookout & rustic pub dinner'),
+              ),
+            );
+      }
+      if (entertainmentCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTx2Id,
+                categoryId: entertainmentCatId,
+                amount: 50.0,
+                note: const Value('National park trail admission & boat rental'),
               ),
             );
       }
 
-      // Sample Debts
+      // 7. Insert Realistic Financial Goals
+      await _db.into(_db.goals).insert(
+            GoalsCompanion.insert(
+              id: uuid.v4(),
+              name: '🛡️ Emergency Reserve (6 Mo)',
+              targetAmount: 10000.0,
+              currentAmount: const Value(6850.0),
+              iconName: const Value('savings'),
+              colorValue: const Value(0xFF10B981), // Emerald
+              targetDate: Value(now.add(const Duration(days: 180))),
+              notes: const Value('Dedicated safety buffer in high-yield account'),
+            ),
+          );
+
+      await _db.into(_db.goals).insert(
+            GoalsCompanion.insert(
+              id: uuid.v4(),
+              name: '💻 MacBook Pro M3 Max',
+              targetAmount: 2499.0,
+              currentAmount: const Value(1800.0),
+              iconName: const Value('laptop'),
+              colorValue: const Value(0xFF3B82F6), // Blue
+              targetDate: Value(now.add(const Duration(days: 60))),
+              notes: const Value('Workstation upgrade for development & design'),
+            ),
+          );
+
+      await _db.into(_db.goals).insert(
+            GoalsCompanion.insert(
+              id: uuid.v4(),
+              name: '✈️ Tokyo & Kyoto Autumn Trip',
+              targetAmount: 3500.0,
+              currentAmount: const Value(1450.0),
+              iconName: const Value('flight'),
+              colorValue: const Value(0xFFEC4899), // Pink
+              targetDate: Value(now.add(const Duration(days: 120))),
+              notes: const Value('Flights, hotels & Japan Rail pass'),
+            ),
+          );
+
+      await _db.into(_db.goals).insert(
+            GoalsCompanion.insert(
+              id: uuid.v4(),
+              name: '🚗 EV Vehicle Downpayment',
+              targetAmount: 5000.0,
+              currentAmount: const Value(4850.0),
+              iconName: const Value('directions_car'),
+              colorValue: const Value(0xFFF59E0B), // Amber
+              targetDate: Value(now.add(const Duration(days: 30))),
+              notes: const Value('Almost ready for order deposit'),
+            ),
+          );
+
+      // 8. Insert Realistic Debts & IOUs
       await _db.into(_db.debts).insert(
             DebtsCompanion.insert(
               id: uuid.v4(),
-              personName: 'Alex Smith',
-              amount: 75.0,
-              settledAmount: const Value(25.0),
+              personName: 'Alex Morgan',
+              amount: 120.0,
+              settledAmount: const Value(40.0),
               type: 'lent',
-              notes: const Value('Concert tickets booking split'),
+              notes: const Value('Concert VIP tickets front booking'),
               dueDate: Value(now.add(const Duration(days: 7))),
+            ),
+          );
+
+      await _db.into(_db.debts).insert(
+            DebtsCompanion.insert(
+              id: uuid.v4(),
+              personName: 'Michael Chang',
+              amount: 65.0,
+              settledAmount: const Value(0.0),
+              type: 'lent',
+              notes: const Value('Team dinner bill coverage'),
+              dueDate: Value(now.add(const Duration(days: 10))),
             ),
           );
 
@@ -834,83 +1102,98 @@ class BackupRestoreService {
             ),
           );
 
-      // Sample Goals
-      await _db.into(_db.goals).insert(
-            GoalsCompanion.insert(
+      await _db.into(_db.debts).insert(
+            DebtsCompanion.insert(
               id: uuid.v4(),
-              name: 'Emergency Fund',
-              targetAmount: 5000.0,
-              currentAmount: const Value(3200.0),
-              iconName: const Value('favorite'),
-              colorValue: const Value(0xFF10B981),
-              targetDate: Value(now.add(const Duration(days: 180))),
+              personName: 'Emma Davis',
+              amount: 45.0,
+              settledAmount: const Value(45.0),
+              type: 'lent',
+              notes: const Value('Book club supplies - fully repaid ✓'),
+              dueDate: Value(now.subtract(const Duration(days: 5))),
             ),
           );
 
-      await _db.into(_db.goals).insert(
-            GoalsCompanion.insert(
-              id: uuid.v4(),
-              name: 'New MacBook Pro',
-              targetAmount: 2000.0,
-              currentAmount: const Value(1250.0),
-              iconName: const Value('laptop'),
-              colorValue: const Value(0xFF3B82F6),
-              targetDate: Value(now.add(const Duration(days: 90))),
-            ),
-          );
-
-      // Sample Subscriptions
-      final entertainmentCatId = catMap['Entertainment'];
-      final billsCatId = catMap['Bills & Utilities'];
-
+      // 9. Insert Recurring Subscriptions & Scheduled Bills
       if (entertainmentCatId != null) {
         await _db.into(_db.recurringTransactions).insert(
               RecurringTransactionsCompanion.insert(
                 id: uuid.v4(),
-                title: 'Netflix Premium 4K',
+                title: 'Netflix Premium 4K Ultra HD',
                 amount: 22.99,
                 categoryId: entertainmentCatId,
-                accountId: bankAcc,
+                accountId: bankAccId,
                 frequency: const Value('monthly'),
-                nextDueDate: now.add(const Duration(days: 4)),
+                nextDueDate: now.add(const Duration(days: 3)),
                 autoLog: const Value(true),
-                notes: const Value('Family subscription'),
+                notes: const Value('Family 4-screen plan'),
               ),
             );
 
         await _db.into(_db.recurringTransactions).insert(
               RecurringTransactionsCompanion.insert(
                 id: uuid.v4(),
-                title: 'Spotify Duo',
-                amount: 14.99,
+                title: 'Spotify Family Premium',
+                amount: 16.99,
                 categoryId: entertainmentCatId,
-                accountId: bankAcc,
+                accountId: bankAccId,
                 frequency: const Value('monthly'),
-                nextDueDate: now.add(const Duration(days: 12)),
-                autoLog: const Value(false),
-                notes: const Value('Music streaming'),
+                nextDueDate: now.add(const Duration(days: 11)),
+                autoLog: const Value(true),
+                notes: const Value('High fidelity music streaming'),
               ),
             );
       }
 
-      if (billsCatId != null) {
+      if (utilitiesCatId != null) {
         await _db.into(_db.recurringTransactions).insert(
               RecurringTransactionsCompanion.insert(
                 id: uuid.v4(),
-                title: 'Gigabit Fiber Internet',
+                title: 'Gigabit Fiber Broadband',
                 amount: 70.00,
-                categoryId: billsCatId,
-                accountId: bankAcc,
+                categoryId: utilitiesCatId,
+                accountId: bankAccId,
                 frequency: const Value('monthly'),
-                nextDueDate: now.add(const Duration(days: 18)),
+                nextDueDate: now.add(const Duration(days: 16)),
                 autoLog: const Value(true),
-                notes: const Value('Home fiber broadband bill'),
+                notes: const Value('Home fiber connection'),
+              ),
+            );
+
+        await _db.into(_db.recurringTransactions).insert(
+              RecurringTransactionsCompanion.insert(
+                id: uuid.v4(),
+                title: 'iCloud+ 2TB Family Storage',
+                amount: 9.99,
+                categoryId: utilitiesCatId,
+                accountId: bankAccId,
+                frequency: const Value('monthly'),
+                nextDueDate: now.add(const Duration(days: 8)),
+                autoLog: const Value(true),
+                notes: const Value('Cloud backup & Photo sync'),
+              ),
+            );
+      }
+
+      if (healthCatId != null) {
+        await _db.into(_db.recurringTransactions).insert(
+              RecurringTransactionsCompanion.insert(
+                id: uuid.v4(),
+                title: 'Planet Fitness Black Card',
+                amount: 24.99,
+                categoryId: healthCatId,
+                accountId: bankAccId,
+                frequency: const Value('monthly'),
+                nextDueDate: now.add(const Duration(days: 22)),
+                autoLog: const Value(true),
+                notes: const Value('Gym & spa access membership'),
               ),
             );
       }
     });
   }
 }
+
 
 final backupRestoreServiceProvider = Provider<BackupRestoreService>((ref) {
   final db = ref.watch(appDatabaseProvider);

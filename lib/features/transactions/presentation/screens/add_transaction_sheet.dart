@@ -278,8 +278,15 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
 
     if (mounted) {
       Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✓ Saved ${_type == "expense" ? "expense" : (_type == "income" ? "income" : "transfer")}: "$title" (${CurrencyFormatter.format(amount)})'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

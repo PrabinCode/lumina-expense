@@ -3,17 +3,65 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/providers/currency_provider.dart';
+import '../../../../core/providers/privacy_mask_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
+import '../../../../core/utils/query_parser.dart';
 import '../../../transactions/data/transaction_repository.dart';
+import '../../../transactions/presentation/widgets/power_search_bar.dart';
+import '../../../transactions/presentation/widgets/transaction_batch_action_bar.dart';
 
-class RecentTransactionsList extends ConsumerWidget {
+class RecentTransactionsList extends ConsumerStatefulWidget {
   const RecentTransactionsList({super.key});
+
+  @override
+  ConsumerState<RecentTransactionsList> createState() => _RecentTransactionsListState();
+}
+
+class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList> {
+  String _searchQuery = '';
+  final Set<String> _selectedIds = {};
+  bool _isSelectionMode = false;
+  bool _isSearchExpanded = false;
+
+  void _toggleSelection(String id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+        if (_selectedIds.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedIds.add(id);
+        _isSelectionMode = true;
+      }
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedIds.clear();
+      _isSelectionMode = false;
+    });
+  }
+
+  void _selectAll(List<TransactionWithDetails> transactions) {
+    setState(() {
+      if (_selectedIds.length == transactions.length) {
+        _selectedIds.clear();
+        _isSelectionMode = false;
+      } else {
+        _selectedIds.addAll(transactions.map((t) => t.transaction.id));
+        _isSelectionMode = true;
+      }
+    });
+  }
 
   void _showTransactionDetails(BuildContext context, TransactionWithDetails item) {
     final tx = item.transaction;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isMasked = ref.read(privacyMaskProvider);
 
     showModalBottomSheet(
       context: context,
@@ -43,7 +91,7 @@ class RecentTransactionsList extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    CurrencyFormatter.format(tx.amount),
+                    CurrencyFormatter.format(tx.amount, mask: isMasked),
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
@@ -62,6 +110,19 @@ class RecentTransactionsList extends ConsumerWidget {
               if (tx.note != null && tx.note!.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text('Note: ${tx.note!}', style: const TextStyle(fontSize: 13)),
+              ],
+              if (tx.tags != null && tx.tags!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  children: tx.tags!.split(',').map((tag) {
+                    return Chip(
+                      label: Text('#${tag.trim()}', style: const TextStyle(fontSize: 11)),
+                      padding: EdgeInsets.zero,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    );
+                  }).toList(),
+                ),
               ],
               if (tx.isSplit && item.splits.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -86,7 +147,10 @@ class RecentTransactionsList extends ConsumerWidget {
                             Icon(IconHelper.getIcon(c.icon), size: 16, color: Color(c.color)),
                             const SizedBox(width: 8),
                             Expanded(child: Text(c.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
-                            Text(CurrencyFormatter.format(s.split.amount), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                            Text(
+                              CurrencyFormatter.format(s.split.amount, mask: isMasked),
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                            ),
                           ],
                         ),
                       );
@@ -103,8 +167,9 @@ class RecentTransactionsList extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     ref.watch(currencyProvider);
+    final isMasked = ref.watch(privacyMaskProvider);
     final transactionsAsync = ref.watch(recentTransactionsStreamProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -122,19 +187,43 @@ class RecentTransactionsList extends ConsumerWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              'Latest 15',
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+            IconButton(
+              icon: Icon(
+                _isSearchExpanded ? Icons.filter_list_off_rounded : Icons.search_rounded,
+                size: 20,
+                color: _searchQuery.isNotEmpty ? AppColors.primary : null,
               ),
+              tooltip: 'Search & Filter',
+              onPressed: () => setState(() {
+                _isSearchExpanded = !_isSearchExpanded;
+                if (!_isSearchExpanded) _searchQuery = '';
+              }),
             ),
+            if (!_isSelectionMode)
+              IconButton(
+                icon: const Icon(Icons.checklist_rounded, size: 20),
+                tooltip: 'Select multiple',
+                onPressed: () => setState(() => _isSelectionMode = true),
+              ),
           ],
         ),
-        const SizedBox(height: 12),
+        if (_isSearchExpanded) ...[
+          const SizedBox(height: 8),
+          PowerSearchBar(
+            query: _searchQuery,
+            onQueryChanged: (q) => setState(() => _searchQuery = q),
+            onClear: () => setState(() => _searchQuery = ''),
+          ),
+          const SizedBox(height: 12),
+        ],
+        const SizedBox(height: 8),
         transactionsAsync.when(
-          data: (transactions) {
-            if (transactions.isEmpty) {
+          data: (allTransactions) {
+            final filteredTransactions = _searchQuery.trim().isEmpty
+                ? allTransactions
+                : allTransactions.where((t) => QueryParser.evaluate(_searchQuery, t)).toList();
+
+            if (filteredTransactions.isEmpty) {
               return Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(32),
@@ -148,18 +237,20 @@ class RecentTransactionsList extends ConsumerWidget {
                 child: Column(
                   children: [
                     Icon(
-                      Icons.receipt_long_outlined,
+                      _searchQuery.isNotEmpty ? Icons.search_off_rounded : Icons.receipt_long_outlined,
                       size: 44,
                       color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'No transactions yet',
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    Text(
+                      _searchQuery.isNotEmpty ? 'No matching transactions' : 'No transactions yet',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Tap + Expense or + Income to record your first transaction.',
+                      _searchQuery.isNotEmpty
+                          ? 'Try refining your query or operators'
+                          : 'Tap + Expense or + Income to record your first transaction.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 12,
@@ -171,145 +262,180 @@ class RecentTransactionsList extends ConsumerWidget {
               );
             }
 
-            return ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: transactions.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final item = transactions[index];
-                final tx = item.transaction;
-                final cat = item.category;
-
-                Color amountColor;
-                String prefix;
-                IconData icon;
-                Color iconColor;
-
-                if (tx.isSplit) {
-                  amountColor = AppColors.expense;
-                  prefix = '-';
-                  icon = Icons.call_split_rounded;
-                  iconColor = AppColors.warning;
-                } else if (tx.type == 'income') {
-                  amountColor = AppColors.income;
-                  prefix = '+';
-                  icon = IconHelper.getIcon(cat?.icon ?? 'payments');
-                  iconColor = cat != null ? Color(cat.color) : AppColors.income;
-                } else if (tx.type == 'expense') {
-                  amountColor = AppColors.expense;
-                  prefix = '-';
-                  icon = IconHelper.getIcon(cat?.icon ?? 'shopping_bag');
-                  iconColor = cat != null ? Color(cat.color) : AppColors.expense;
-                } else {
-                  amountColor = AppColors.transfer;
-                  prefix = '';
-                  icon = Icons.swap_horiz_rounded;
-                  iconColor = AppColors.transfer;
-                }
-
-                return Dismissible(
-                  key: Key(tx.id),
-                  direction: DismissDirection.endToStart,
-                  background: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    alignment: Alignment.centerRight,
-                    decoration: BoxDecoration(
-                      color: AppColors.expense,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(Icons.delete_outline, color: Colors.white),
+            return Column(
+              children: [
+                if (_isSelectionMode) ...[
+                  TransactionBatchActionBar(
+                    selectedIds: _selectedIds,
+                    onClearSelection: _clearSelection,
+                    onSelectAll: () => _selectAll(filteredTransactions),
+                    isAllSelected: _selectedIds.length == filteredTransactions.length && filteredTransactions.isNotEmpty,
                   ),
-                  onDismissed: (_) {
-                    ref.read(transactionRepositoryProvider).deleteTransaction(tx.id);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Deleted "${tx.title}"')),
-                    );
-                  },
-                  child: Material(
-                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                    borderRadius: BorderRadius.circular(16),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () => _showTransactionDetails(context, item),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
+                  const SizedBox(height: 10),
+                ],
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: filteredTransactions.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final item = filteredTransactions[index];
+                    final tx = item.transaction;
+                    final cat = item.category;
+                    final isSelected = _selectedIds.contains(tx.id);
+
+                    Color amountColor;
+                    String prefix;
+                    IconData icon;
+                    Color iconColor;
+
+                    if (tx.isSplit) {
+                      amountColor = AppColors.expense;
+                      prefix = '-';
+                      icon = Icons.call_split_rounded;
+                      iconColor = AppColors.warning;
+                    } else if (tx.type == 'income') {
+                      amountColor = AppColors.income;
+                      prefix = '+';
+                      icon = IconHelper.getIcon(cat?.icon ?? 'payments');
+                      iconColor = cat != null ? Color(cat.color) : AppColors.income;
+                    } else if (tx.type == 'expense') {
+                      amountColor = AppColors.expense;
+                      prefix = '-';
+                      icon = IconHelper.getIcon(cat?.icon ?? 'shopping_bag');
+                      iconColor = cat != null ? Color(cat.color) : AppColors.expense;
+                    } else {
+                      amountColor = AppColors.transfer;
+                      prefix = '';
+                      icon = Icons.swap_horiz_rounded;
+                      iconColor = AppColors.transfer;
+                    }
+
+                    return Dismissible(
+                      key: Key(tx.id),
+                      direction: _isSelectionMode ? DismissDirection.none : DismissDirection.endToStart,
+                      background: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        alignment: Alignment.centerRight,
                         decoration: BoxDecoration(
+                          color: AppColors.expense,
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                          ),
                         ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: iconColor.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(12),
+                        child: const Icon(Icons.delete_outline, color: Colors.white),
+                      ),
+                      onDismissed: (_) {
+                        ref.read(transactionRepositoryProvider).deleteTransaction(tx.id);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Deleted "${tx.title}"')),
+                        );
+                      },
+                      child: Material(
+                        color: isSelected
+                            ? AppColors.primary.withValues(alpha: 0.15)
+                            : (isDark ? AppColors.darkSurface : AppColors.lightSurface),
+                        borderRadius: BorderRadius.circular(16),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onLongPress: () => _toggleSelection(tx.id),
+                          onTap: () {
+                            if (_isSelectionMode) {
+                              _toggleSelection(tx.id);
+                            } else {
+                              _showTransactionDetails(context, item);
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                                width: isSelected ? 1.5 : 1,
                               ),
-                              child: Icon(icon, color: iconColor, size: 22),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          tx.title,
-                                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      if (tx.isSplit) ...[
-                                        const SizedBox(width: 6),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.warning.withValues(alpha: 0.15),
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: Text(
-                                            'Split (${item.splits.length})',
-                                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.warning),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${item.account.name}${item.toAccount != null ? ' → ${item.toAccount!.name}' : ''}  •  ${DateFormat('MMM d').format(tx.date)}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            child: Row(
+                              children: [
+                                if (_isSelectionMode)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 10),
+                                    child: Icon(
+                                      isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                      color: isSelected ? AppColors.primary : Colors.grey,
+                                      size: 22,
                                     ),
                                   ),
-                                ],
-                              ),
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: iconColor.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(icon, color: iconColor, size: 22),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              tx.title,
+                                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (tx.isSplit) ...[
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.warning.withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                'Split (${item.splits.length})',
+                                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.warning),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${item.account.name}${item.toAccount != null ? ' → ${item.toAccount!.name}' : ''}  •  ${DateFormat('MMM d').format(tx.date)}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '$prefix${CurrencyFormatter.format(tx.amount, mask: isMasked)}',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: amountColor,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              '$prefix${CurrencyFormatter.format(tx.amount)}',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: amountColor,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                );
-              },
+                    );
+                  },
+                ),
+              ],
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),

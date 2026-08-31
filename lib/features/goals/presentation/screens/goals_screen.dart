@@ -234,10 +234,16 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                         ),
                       );
                     }
-                    if (context.mounted) Navigator.pop(context);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(editGoal == null ? '✓ Goal "$name" created!' : '✓ Goal "$name" updated!')),
+                      );
+                    }
                   },
                   child: Text(editGoal == null ? 'Create Goal' : 'Save Changes'),
                 ),
+
               ],
             );
           },

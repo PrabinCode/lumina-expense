@@ -9,11 +9,22 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterFragmentActivity() {
-    private val CHANNEL = "com.prabincode.luminaexpense/email"
+    private val EMAIL_CHANNEL = "com.prabincode.luminaexpense/email"
+    private val SHORTCUT_CHANNEL = "com.prabincode.luminaexpense/shortcuts"
+
+    private var initialActionUri: String? = null
+    private var shortcutChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+
+        // Capture initial intent data if launched via shortcut or deep link
+        if (initialActionUri == null && intent?.dataString != null) {
+            initialActionUri = intent.dataString
+        }
+
+        // Email Channel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, EMAIL_CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "sendEmail") {
                 val recipient = call.argument<String>("recipient") ?: "prabin@pcshrestha.com.np"
                 val subject = call.argument<String>("subject") ?: ""
@@ -50,6 +61,28 @@ class MainActivity : FlutterFragmentActivity() {
             } else {
                 result.notImplemented()
             }
+        }
+
+        // Shortcut & Deep Link Channel
+        shortcutChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHORTCUT_CHANNEL).apply {
+            setMethodCallHandler { call, result ->
+                if (call.method == "getInitialAction") {
+                    val action = initialActionUri
+                    initialActionUri = null
+                    result.success(action)
+                } else {
+                    result.notImplemented()
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val dataString = intent.dataString
+        if (dataString != null) {
+            shortcutChannel?.invokeMethod("onAction", dataString)
         }
     }
 }

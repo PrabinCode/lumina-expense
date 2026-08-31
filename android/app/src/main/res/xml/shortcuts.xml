@@ -1,0 +1,41 @@
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="add_expense"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_add_expense_short"
+        android:shortcutLongLabel="@string/shortcut_add_expense_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.prabincode.luminaexpense"
+            android:targetClass="com.prabincode.luminaexpense.MainActivity"
+            android:data="lumina://action/add_expense" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="add_income"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_add_income_short"
+        android:shortcutLongLabel="@string/shortcut_add_income_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.prabincode.luminaexpense"
+            android:targetClass="com.prabincode.luminaexpense.MainActivity"
+            android:data="lumina://action/add_income" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="health_score"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_health_short"
+        android:shortcutLongLabel="@string/shortcut_health_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.prabincode.luminaexpense"
+            android:targetClass="com.prabincode.luminaexpense.MainActivity"
+            android:data="lumina://action/health_score" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+</shortcuts>

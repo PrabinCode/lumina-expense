@@ -4,7 +4,11 @@ class CurrencyFormatter {
   /// Global active currency symbol set dynamically by CurrencyNotifier
   static String activeCurrencySymbol = '\$';
 
-  static String format(double amount, {String? currencySymbol}) {
+  static String format(double amount, {String? currencySymbol, bool mask = false}) {
+    if (mask) {
+      final symbol = currencySymbol ?? activeCurrencySymbol;
+      return '$symbol••••';
+    }
     final symbol = currencySymbol ?? activeCurrencySymbol;
     final formatter = NumberFormat.currency(
       symbol: symbol,
@@ -13,7 +17,11 @@ class CurrencyFormatter {
     return formatter.format(amount);
   }
 
-  static String formatCompact(double amount, {String? currencySymbol}) {
+  static String formatCompact(double amount, {String? currencySymbol, bool mask = false}) {
+    if (mask) {
+      final symbol = currencySymbol ?? activeCurrencySymbol;
+      return '$symbol••••';
+    }
     final symbol = currencySymbol ?? activeCurrencySymbol;
     if (amount.abs() >= 1000000) {
       return '$symbol${(amount / 1000000).toStringAsFixed(1)}M';
@@ -23,3 +31,4 @@ class CurrencyFormatter {
     return format(amount, currencySymbol: symbol);
   }
 }
+

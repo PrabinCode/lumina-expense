@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/services/app_log_service.dart';
-import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
+
 import 'features/analytics/presentation/screens/analytics_screen.dart';
 import 'features/app_lock/data/app_lock_service.dart';
 import 'features/app_lock/presentation/screens/app_lock_screen.dart';
@@ -12,6 +12,7 @@ import 'features/app_lock/presentation/widgets/privacy_shield_widget.dart';
 import 'features/budgets/presentation/screens/budgets_screen.dart';
 import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'features/onboarding/presentation/screens/onboarding_screen.dart';
+import 'core/services/quick_shortcut_service.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
 import 'features/transactions/presentation/screens/add_transaction_sheet.dart';
 
@@ -20,6 +21,7 @@ import 'features/subscriptions/data/subscription_repository.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   AppLogService.initialize();
+  QuickShortcutService.initialize();
   runApp(
     const ProviderScope(
       child: LuminaExpenseApp(),
@@ -32,12 +34,20 @@ class LuminaExpenseApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(themeModeProvider);
+    final themeState = ref.watch(themeStateProvider);
+    final themeMode = themeState.mode;
+    final palette = themeState.palette;
 
-    ThemeData activeDarkTheme = AppTheme.darkTheme;
-    if (themeMode == AppThemeMode.amoled) {
-      activeDarkTheme = AppTheme.amoledTheme;
-    }
+    final lightTheme = AppTheme.buildTheme(
+      palette: palette,
+      isDark: false,
+    );
+
+    final darkTheme = AppTheme.buildTheme(
+      palette: palette,
+      isDark: true,
+      isAmoled: themeMode == AppThemeMode.amoled,
+    );
 
     ThemeMode flutterThemeMode;
     switch (themeMode) {
@@ -55,13 +65,16 @@ class LuminaExpenseApp extends ConsumerWidget {
 
     return MaterialApp(
       title: 'Lumina Expense',
+      navigatorKey: QuickShortcutService.navigatorKey,
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: activeDarkTheme,
+      theme: lightTheme,
+      darkTheme: darkTheme,
       themeMode: flutterThemeMode,
       home: const _AppLockGate(),
     );
   }
+
+
 }
 
 /// Gate widget that shows onboarding, lock screen, or main content based on state.
@@ -202,12 +215,13 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openAddTransaction(context),
-        backgroundColor: AppColors.primary,
+        backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
         elevation: 4,
         shape: const CircleBorder(),
         child: const Icon(Icons.add_rounded, size: 30),
       ),
+
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
