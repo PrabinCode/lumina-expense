@@ -44,10 +44,24 @@ app.*.map.json
 /android/app/profile/
 /android/app/release/
 
-# AI Agent Local Rules & Protocols (Local-only, NOT pushed to GitHub)
+# AI Agent Local Rules, Skills & Protocols (Local-only, NOT pushed to GitHub)
+.agents/
+.agent/
+_agents/
+_agent/
 .agent-rules/
+.agent-skills/
+.agents-skills/
+.skills/
+skills/
+rules/
 .gemini/
+.cursor/
 .cursorrules
+.windsurf/
+.windsurfrules
+.cline/
+.clinerules
 .copilot/
 ROADMAP.md
 scratch/

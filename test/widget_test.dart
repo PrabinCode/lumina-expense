@@ -32,7 +32,7 @@ void main() {
     await testDb.close();
   });
 
-  testWidgets('App shows onboarding screen on first launch', (WidgetTester tester) async {
+  testWidgets('App shows onboarding slider on first launch and navigates through slides', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({'is_onboarded': false});
     final testDb = AppDatabase(NativeDatabase.memory());
 
@@ -48,8 +48,41 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
-    expect(find.text('Welcome to Lumina Expense'), findsOneWidget);
+    // Slide 1: Privacy
+    expect(find.text('100% PRIVATE & OFFLINE'), findsOneWidget);
+    expect(find.text('Total Privacy,\nZero Cloud Tracking'), findsOneWidget);
+    expect(find.text('Next'), findsOneWidget);
+    expect(find.text('Skip'), findsOneWidget);
+
+    // Tap Next -> Slide 2: Smart Budgeting
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('EFFORTLESS MANAGEMENT'), findsOneWidget);
+    expect(find.text('Smart Tracking\n& Category Budgets'), findsOneWidget);
+
+    // Tap Next -> Slide 3: Analytics
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('DEEP INSIGHTS & REPORTS'), findsOneWidget);
+    expect(find.text('Insightful Analytics\n& Cash Flow Trends'), findsOneWidget);
+
+    // Tap Next -> Slide 4: Setup & Personalize
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Personalize Your Lumina'), findsOneWidget);
+    expect(find.text('Default Currency'), findsOneWidget);
     expect(find.text('Get Started'), findsOneWidget);
+
+    // Complete Onboarding
+    await tester.tap(find.text('Get Started'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    // Verify main app dashboard appears
+    expect(find.text('Total Net Worth'), findsOneWidget);
 
     await testDb.close();
   });

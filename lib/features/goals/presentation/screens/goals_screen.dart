@@ -575,10 +575,14 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                '${CurrencyFormatter.format(goal.currentAmount)} of ${CurrencyFormatter.format(goal.targetAmount)}',
-                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                              Expanded(
+                                child: Text(
+                                  '${CurrencyFormatter.format(goal.currentAmount)} of ${CurrencyFormatter.format(goal.targetAmount)}',
+                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
+                              const SizedBox(width: 8),
                               Text(
                                 '${(progress * 100).toStringAsFixed(1)}%',
                                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: goalColor),

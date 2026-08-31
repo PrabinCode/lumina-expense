@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:drift/native.dart';
@@ -13,7 +12,6 @@ import 'package:lumina_expense/core/theme/app_theme.dart';
 import 'package:lumina_expense/features/analytics/presentation/screens/analytics_screen.dart';
 import 'package:lumina_expense/features/backup/services/backup_restore_service.dart';
 import 'package:lumina_expense/features/budgets/presentation/screens/budgets_screen.dart';
-import 'package:lumina_expense/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:lumina_expense/features/debts/presentation/screens/debts_screen.dart';
 import 'package:lumina_expense/features/goals/presentation/screens/goals_screen.dart';
 import 'package:lumina_expense/features/settings/presentation/screens/settings_screen.dart';

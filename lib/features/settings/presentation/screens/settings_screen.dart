@@ -17,6 +17,7 @@ import '../../../debts/presentation/screens/debts_screen.dart';
 import '../../../goals/presentation/screens/goals_screen.dart';
 import '../../../health/presentation/screens/financial_health_screen.dart';
 import '../../../subscriptions/presentation/screens/subscriptions_screen.dart';
+import '../../../onboarding/presentation/screens/onboarding_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -506,6 +507,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 8),
 
               _SettingsNavTile(
+                title: 'App Tour & Walkthrough',
+                subtitle: 'Explore key features and guided visual overview',
+                icon: Icons.auto_awesome_rounded,
+                iconColor: AppColors.primary,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const OnboardingScreen(isViewingOnly: true),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
                 title: 'Privacy Policy & Terms',
                 subtitle: '100% offline — zero data collection & local privacy',
                 icon: Icons.shield_outlined,
@@ -588,8 +603,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ],
                     ),
                     const Divider(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         const Text(
                           'Lumina Expense v1.1.0',
@@ -598,12 +616,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         InkWell(
                           onTap: () => _showUpdateCheckDialog(context),
                           child: const Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.system_update_alt_rounded, size: 14, color: AppColors.primary),
                               SizedBox(width: 4),
                               Text(
                                 'Check for Updates',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary),
                               ),
                             ],
                           ),
