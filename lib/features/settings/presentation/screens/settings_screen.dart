@@ -128,7 +128,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Current Installed Version: v1.1.0', style: TextStyle(fontWeight: FontWeight.w600)),
+              Text('Current Installed Version: v1.2.0', style: TextStyle(fontWeight: FontWeight.w600)),
               SizedBox(height: 8),
               Text(
                 'Lumina Expense is 100% offline-first. You can check the latest releases, change logs, and download updated APKs on GitHub.',
@@ -667,7 +667,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       runSpacing: 10,
                       children: [
                         const Text(
-                          'v1.1.0 (Build 2)',
+                          'v1.2.0 (Build 3)',
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey),
                         ),
                         InkWell(

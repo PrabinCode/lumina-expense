@@ -109,7 +109,7 @@ class _FeedbackReportSheetState extends ConsumerState<FeedbackReportSheet> {
             )
           : null;
 
-      final subject = '[Lumina Expense v1.1.0] $_selectedCategory';
+      final subject = '[Lumina Expense v1.2.0] $_selectedCategory';
       final buffer = StringBuffer();
       buffer.writeln('Hi Prabin,');
       buffer.writeln();
@@ -184,7 +184,7 @@ class _FeedbackReportSheetState extends ConsumerState<FeedbackReportSheet> {
 
       await Share.shareXFiles(
         filesToShare,
-        subject: '[Lumina Expense v1.1.0] Diagnostic Logs',
+        subject: '[Lumina Expense v1.2.0] Diagnostic Logs',
         text: 'Lumina Expense Diagnostic Report & Error Logs',
       );
     } catch (e) {

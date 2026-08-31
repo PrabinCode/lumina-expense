@@ -60,7 +60,7 @@ class AppLogService {
       return true;
     };
 
-    instance.logInfo('Lumina Expense initialized (v1.1.0+2)');
+    instance.logInfo('Lumina Expense initialized (v1.2.0+3)');
   }
 
   void logInfo(String message) {
@@ -114,7 +114,7 @@ class AppLogService {
     buffer.writeln('========================================');
     buffer.writeln();
     buffer.writeln('--- APP & DEVICE INFO ---');
-    buffer.writeln('App Version: v1.1.0 (Build 2)');
+    buffer.writeln('App Version: v1.2.0 (Build 3)');
     buffer.writeln('Package: com.prabincode.luminaexpense');
     buffer.writeln('OS: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}');
     buffer.writeln('Locale: ${Platform.localeName}');

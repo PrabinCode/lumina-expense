@@ -1,7 +1,7 @@
 # 🚀 Lumina Expense Tracker — Release & Operations Guide
 > Author: **Prabin Chandra Shrestha (@PrabinCode)**  
 > Application ID: `com.prabincode.luminaexpense`  
-> Version: `1.1.0+2` (Name: `v1.1.0`, Code: `2`)  
+> Version: `1.2.0+3` (Name: `v1.2.0`, Code: `3`)  
 > Website & Documentation: [https://pcshrestha.com.np/lumina-expense-tracker](https://pcshrestha.com.np/lumina-expense-tracker)
 
 ---
@@ -21,7 +21,7 @@ flutter build appbundle --release
 ```powershell
 flutter build apk --release
 ```
-* **Output Path**: `build/app/outputs/flutter-apk/LuminaExpense-v1.1.0-PrabinCode.apk`
+* **Output Path**: `build/app/outputs/flutter-apk/LuminaExpense-v1.2.0-PrabinCode.apk`
 * **Use for**: Installing directly on your physical Android device or attaching to GitHub Releases.
 
 ---
