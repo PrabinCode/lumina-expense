@@ -56,16 +56,40 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> with 
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              ref.read(subscriptionRepositoryProvider).deleteSubscription(sub.subscription.id);
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Deleted "${sub.subscription.title}"')),
-              );
+            onPressed: () async {
+              final repo = ref.read(subscriptionRepositoryProvider);
+              final subscription = sub.subscription;
+              await repo.deleteSubscription(subscription.id);
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (context.mounted) {
+                final messenger = ScaffoldMessenger.of(context);
+                messenger.clearSnackBars();
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Deleted "${subscription.title}"'),
+                    duration: const Duration(seconds: 5),
+                    action: SnackBarAction(
+                      label: 'UNDO',
+                      textColor: AppColors.income,
+                      onPressed: () async {
+                        await repo.restoreSubscription(subscription);
+                        messenger.clearSnackBars();
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text('✓ Restored "${subscription.title}"'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              }
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.expense),
             child: const Text('Delete'),
           ),
+
         ],
       ),
     );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/bouncy.dart';
 
 class NumKeypad extends StatelessWidget {
   final ValueChanged<String> onKeyPressed;
@@ -67,22 +68,30 @@ class _KeypadButton extends StatelessWidget {
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.all(4),
-        child: Material(
-          color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              height: 48,
-              alignment: Alignment.center,
-              child: Text(
-                text,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                ),
+        child: Bouncy(
+          pressedScale: 0.92,
+          enableHaptics: true,
+          onTap: onTap,
+          child: Container(
+            height: 50,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.07)
+                    : Colors.black.withValues(alpha: 0.05),
+                width: 1,
+              ),
+            ),
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
           ),
@@ -110,20 +119,28 @@ class _KeypadIconButton extends StatelessWidget {
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.all(4),
-        child: Material(
-          color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            onTap: onTap,
-            onLongPress: onLongPress,
-            borderRadius: BorderRadius.circular(12),
-            child: SizedBox(
-              height: 48,
-              child: Icon(
-                icon,
-                size: 20,
-                color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+        child: Bouncy(
+          pressedScale: 0.92,
+          enableHaptics: true,
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Container(
+            height: 50,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.07)
+                    : Colors.black.withValues(alpha: 0.05),
+                width: 1,
               ),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
             ),
           ),
         ),

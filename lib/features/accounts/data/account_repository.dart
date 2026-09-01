@@ -57,6 +57,25 @@ class AccountRepository {
     return (_db.delete(_db.accounts)..where((tbl) => tbl.id.equals(accountId))).go();
   }
 
+  Future<void> restoreAccount(Account account) {
+    return _db.into(_db.accounts).insert(
+          AccountsCompanion.insert(
+            id: account.id,
+            name: account.name,
+            type: account.type,
+            currency: Value(account.currency),
+            icon: Value(account.icon),
+            color: Value(account.color),
+            initialBalance: Value(account.initialBalance),
+            isArchived: Value(account.isArchived),
+            createdAt: Value(account.createdAt),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
+
+
   /// Watch accounts with real-time computed balances
   Stream<List<AccountWithBalance>> watchAccountsWithBalances() {
     return watchAllAccounts().asyncMap((accountsList) async {

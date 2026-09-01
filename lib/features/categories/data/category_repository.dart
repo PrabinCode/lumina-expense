@@ -1,5 +1,7 @@
+import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
 
@@ -74,7 +76,24 @@ class CategoryRepository {
   Future<int> deleteCategory(String categoryId) {
     return (_db.delete(_db.categories)..where((tbl) => tbl.id.equals(categoryId))).go();
   }
+
+  Future<void> restoreCategory(Category category) {
+    return _db.into(_db.categories).insert(
+          CategoriesCompanion.insert(
+            id: category.id,
+            name: category.name,
+            type: category.type,
+            icon: Value(category.icon),
+            color: Value(category.color),
+            parentCategoryId: Value(category.parentCategoryId),
+            isDefault: Value(category.isDefault),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
 }
+
 
 final categoryRepositoryProvider = Provider<CategoryRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);

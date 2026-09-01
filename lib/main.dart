@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/services/app_log_service.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/sonner_toast.dart';
 
 import 'features/analytics/presentation/screens/analytics_screen.dart';
 import 'features/app_lock/data/app_lock_service.dart';
@@ -70,6 +71,7 @@ class LuminaExpenseApp extends ConsumerWidget {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: flutterThemeMode,
+      builder: (context, child) => SonnerToastHost(child: child ?? const SizedBox.shrink()),
       home: const _AppLockGate(),
     );
   }

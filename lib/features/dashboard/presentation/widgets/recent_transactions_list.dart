@@ -8,6 +8,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
 import '../../../../core/utils/query_parser.dart';
+import '../../../../core/widgets/bouncy.dart';
+import '../../../../core/widgets/sonner_toast.dart';
 import '../../../transactions/data/transaction_repository.dart';
 import '../../../transactions/presentation/widgets/power_search_bar.dart';
 import '../../../transactions/presentation/widgets/transaction_batch_action_bar.dart';
@@ -99,6 +101,42 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
                           ? AppColors.income
                           : (tx.type == 'expense' ? AppColors.expense : AppColors.transfer),
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline_rounded, color: AppColors.expense),
+                    tooltip: 'Delete transaction',
+                    onPressed: () async {
+                      final repo = ref.read(transactionRepositoryProvider);
+                      final snapshot = await repo.getTransactionSnapshot(tx.id);
+                      await repo.deleteTransaction(tx.id);
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        final messenger = ScaffoldMessenger.of(context);
+                        messenger.clearSnackBars();
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text('Deleted "${tx.title}"'),
+                            duration: const Duration(seconds: 5),
+                            action: SnackBarAction(
+                              label: 'UNDO',
+                              textColor: AppColors.income,
+                              onPressed: () async {
+                                if (snapshot != null) {
+                                  await repo.restoreTransactionSnapshot(snapshot);
+                                  messenger.clearSnackBars();
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text('✓ Restored "${tx.title}"'),
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          ),
+                        );
+                      }
+                    },
                   ),
                 ],
               ),
@@ -324,62 +362,48 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
                         child: const Icon(Icons.delete_outline, color: Colors.white),
                       ),
                       onDismissed: (_) async {
-                        final messenger = ScaffoldMessenger.of(context);
                         final repo = ref.read(transactionRepositoryProvider);
                         final snapshot = await repo.getTransactionSnapshot(tx.id);
                         await repo.deleteTransaction(tx.id);
 
-                        messenger.clearSnackBars();
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text('Deleted "${tx.title}"'),
-                            duration: const Duration(seconds: 5),
-                            action: SnackBarAction(
-                              label: 'UNDO',
-                              textColor: AppColors.income,
-                              onPressed: () async {
-                                if (snapshot != null) {
-                                  await repo.restoreTransactionSnapshot(snapshot);
-                                  messenger.clearSnackBars();
-                                  messenger.showSnackBar(
-                                    SnackBar(
-                                      content: Text('✓ Restored "${tx.title}"'),
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
-                                }
-                              },
-                            ),
-                          ),
+                        Sonner.success(
+                          'Deleted "${tx.title}"',
+                          description: 'Tap undo to restore this entry',
+                          undoLabel: 'UNDO',
+                          onUndo: () async {
+                            if (snapshot != null) {
+                              await repo.restoreTransactionSnapshot(snapshot);
+                              Sonner.success('Restored "${tx.title}"');
+                            }
+                          },
                         );
                       },
 
-                      child: Material(
-                        color: isSelected
-                            ? AppColors.primary.withValues(alpha: 0.15)
-                            : (isDark ? AppColors.darkSurface : AppColors.lightSurface),
-                        borderRadius: BorderRadius.circular(16),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onLongPress: () => _toggleSelection(tx.id),
-                          onTap: () {
-                            if (_isSelectionMode) {
-                              _toggleSelection(tx.id);
-                            } else {
-                              _showTransactionDetails(context, item);
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: isSelected
-                                    ? AppColors.primary
-                                    : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
-                                width: isSelected ? 1.5 : 1,
-                              ),
+                      child: Bouncy(
+                        pressedScale: 0.98,
+                        enableHaptics: true,
+                        onLongPress: () => _toggleSelection(tx.id),
+                        onTap: () {
+                          if (_isSelectionMode) {
+                            _toggleSelection(tx.id);
+                          } else {
+                            _showTransactionDetails(context, item);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppColors.primary.withValues(alpha: 0.15)
+                                : (isDark ? AppColors.darkSurface : AppColors.lightSurface),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                              width: isSelected ? 1.5 : 1,
                             ),
+                          ),
                             child: Row(
                               children: [
                                 if (_isSelectionMode)
@@ -450,14 +474,14 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
                                     fontSize: 15,
                                     fontWeight: FontWeight.w700,
                                     color: amountColor,
+                                    fontFeatures: const [FontFeature.tabularFigures()],
                                   ),
                                 ),
                               ],
                             ),
                           ),
                         ),
-                      ),
-                    );
+                      );
                   },
                 ),
               ],

@@ -171,11 +171,37 @@ class AccountsScreen extends ConsumerWidget {
                 foregroundColor: Colors.white,
               ),
               onPressed: () async {
-                await ref.read(accountRepositoryProvider).deleteAccount(account.id);
+                final repo = ref.read(accountRepositoryProvider);
+                await repo.deleteAccount(account.id);
                 if (context.mounted) Navigator.pop(context);
+                if (context.mounted) {
+                  final messenger = ScaffoldMessenger.of(context);
+                  messenger.clearSnackBars();
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Deleted account "${account.name}"'),
+                      duration: const Duration(seconds: 5),
+                      action: SnackBarAction(
+                        label: 'UNDO',
+                        textColor: AppColors.income,
+                        onPressed: () async {
+                          await repo.restoreAccount(account);
+                          messenger.clearSnackBars();
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text('✓ Restored account "${account.name}"'),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  );
+                }
               },
               child: const Text('Delete'),
             ),
+
           ],
         );
       },

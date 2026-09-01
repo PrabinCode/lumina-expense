@@ -9,6 +9,9 @@ import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
+import '../../../../core/widgets/sliding_pill_control.dart';
+import '../../../../core/widgets/sonner_toast.dart';
+import '../../../../core/widgets/spring_shake.dart';
 import '../../../accounts/data/account_repository.dart';
 import '../../../categories/data/category_repository.dart';
 import '../../data/transaction_repository.dart';
@@ -44,6 +47,7 @@ class AddTransactionSheet extends ConsumerStatefulWidget {
 }
 
 class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
+  final GlobalKey<SpringShakeState> _shakeKey = GlobalKey<SpringShakeState>();
   late String _type;
   String _amountStr = '0';
   final _titleController = TextEditingController();
@@ -74,6 +78,12 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   }
 
   void _onKeypadPress(String val) {
+    if (val != '.') {
+      final digitCount = _amountStr == '0' ? 0 : _amountStr.replaceAll('.', '').length;
+      if (digitCount >= 15) {
+        return; // Max 15 numbers can be inserted
+      }
+    }
     setState(() {
       if (_amountStr == '0' && val != '.') {
         _amountStr = val;
@@ -168,66 +178,55 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   Future<void> _saveTransaction() async {
     final amount = double.tryParse(_amountStr) ?? 0.0;
     if (amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid amount greater than 0')),
-      );
+      _shakeKey.currentState?.shake();
+      Sonner.error('Invalid Amount', description: 'Please enter an amount greater than 0');
       return;
     }
 
     if (_selectedAccountId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select an account')),
-      );
+      _shakeKey.currentState?.shake();
+      Sonner.error('Account Required', description: 'Please select an account');
       return;
     }
 
     if (_type == 'transfer' && _selectedToAccountId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select destination account for transfer')),
-      );
+      _shakeKey.currentState?.shake();
+      Sonner.error('Destination Required', description: 'Please select destination account for transfer');
       return;
     }
 
     if (_type == 'transfer' && _selectedAccountId == _selectedToAccountId) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Source and destination accounts must be different')),
-      );
+      _shakeKey.currentState?.shake();
+      Sonner.error('Identical Accounts', description: 'Source and destination accounts must be different');
       return;
     }
 
     // Split Validation
     if (_isSplitMode && _type == 'expense') {
       if (_splitItems.length < 2) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please add at least 2 split category items')),
-        );
+        _shakeKey.currentState?.shake();
+        Sonner.error('Split Validation', description: 'Please add at least 2 split category items');
         return;
       }
 
       for (int i = 0; i < _splitItems.length; i++) {
         final item = _splitItems[i];
         if (item.categoryId == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Please select a category for item #${i + 1}')),
-          );
+          Sonner.error('Category Required', description: 'Please select a category for item #${i + 1}');
           return;
         }
         if (item.amount <= 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Item #${i + 1} must have an amount greater than 0')),
-          );
+          Sonner.error('Invalid Split Amount', description: 'Item #${i + 1} must have an amount greater than 0');
           return;
         }
       }
 
       final allocatedSum = _getAllocatedSplitSum();
       if ((allocatedSum - amount).abs() > 0.01) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Allocated sum (${CurrencyFormatter.format(allocatedSum)}) does not match total (${CurrencyFormatter.format(amount)})',
-            ),
-          ),
+        _shakeKey.currentState?.shake();
+        Sonner.error(
+          'Split Mismatch',
+          description: 'Allocated sum (${CurrencyFormatter.format(allocatedSum)}) does not match total (${CurrencyFormatter.format(amount)})',
         );
         return;
       }
@@ -278,11 +277,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
 
     if (mounted) {
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✓ Saved ${_type == "expense" ? "expense" : (_type == "income" ? "income" : "transfer")}: "$title" (${CurrencyFormatter.format(amount)})'),
-          duration: const Duration(seconds: 2),
-        ),
+      Sonner.success(
+        'Saved "$title"',
+        description: CurrencyFormatter.format(amount),
       );
     }
   }
@@ -339,58 +336,81 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
           ),
           const SizedBox(height: 12),
 
-          // Type Switcher Tabs
+          // Type Switcher Tabs (Emil Kowalski Fluid Sliding Pill)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  _buildTypeTab('expense', 'Expense', AppColors.expense),
-                  _buildTypeTab('income', 'Income', AppColors.income),
-                  _buildTypeTab('transfer', 'Transfer', AppColors.transfer),
-                ],
-              ),
+            child: SlidingPillControl<String>(
+              selectedValue: _type,
+              onValueChanged: (val) => setState(() {
+                _type = val;
+                _selectedCategoryId = null;
+                if (_type != 'expense') {
+                  _isSplitMode = false;
+                }
+              }),
+              segments: const [
+                SlidingPillSegment(
+                  value: 'expense',
+                  label: 'Expense',
+                  activeColor: AppColors.expense,
+                ),
+                SlidingPillSegment(
+                  value: 'income',
+                  label: 'Income',
+                  activeColor: AppColors.income,
+                ),
+                SlidingPillSegment(
+                  value: 'transfer',
+                  label: 'Transfer',
+                  activeColor: AppColors.transfer,
+                ),
+              ],
             ),
           ),
 
           const SizedBox(height: 16),
 
-          // Amount Display Area
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 20),
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-            decoration: BoxDecoration(
-              color: primaryTypeColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: primaryTypeColor.withValues(alpha: 0.3), width: 1.5),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  '${CurrencyFormatter.activeCurrencySymbol} ',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: primaryTypeColor,
+          // Amount Display Area with Emil Kowalski Decaying Spring Shake
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: SpringShake(
+              key: _shakeKey,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: primaryTypeColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: primaryTypeColor.withValues(alpha: 0.3), width: 1.5),
+                ),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.center,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        '${CurrencyFormatter.activeCurrencySymbol} ',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: primaryTypeColor,
+                        ),
+                      ),
+                      Text(
+                        _amountStr,
+                        style: TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w800,
+                          color: primaryTypeColor,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  _amountStr,
-                  style: TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.w800,
-                    color: primaryTypeColor,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
 
@@ -427,6 +447,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                         child: accountsAsync.when(
                           data: (accounts) {
                             return DropdownButtonFormField<String>(
+                              isExpanded: true,
                               initialValue: _selectedAccountId,
                               decoration: InputDecoration(
                                 labelText: _type == 'transfer' ? 'From Account' : 'Account',
@@ -445,7 +466,14 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                                     children: [
                                       Icon(IconHelper.getIcon(acc.icon), size: 18, color: Color(acc.color)),
                                       const SizedBox(width: 8),
-                                      Text(acc.name, style: const TextStyle(fontSize: 13)),
+                                      Expanded(
+                                        child: Text(
+                                          acc.name,
+                                          style: const TextStyle(fontSize: 13),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 );
@@ -463,6 +491,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                           child: accountsAsync.when(
                             data: (accounts) {
                               return DropdownButtonFormField<String>(
+                                isExpanded: true,
                                 initialValue: _selectedToAccountId,
                                 decoration: InputDecoration(
                                   labelText: 'To Account',
@@ -481,7 +510,14 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                                       children: [
                                         Icon(IconHelper.getIcon(acc.icon), size: 18, color: Color(acc.color)),
                                         const SizedBox(width: 8),
-                                        Text(acc.name, style: const TextStyle(fontSize: 13)),
+                                        Expanded(
+                                          child: Text(
+                                            acc.name,
+                                            style: const TextStyle(fontSize: 13),
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   );
@@ -798,38 +834,6 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTypeTab(String type, String label, Color activeColor) {
-    final isSelected = _type == type;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() {
-          _type = type;
-          _selectedCategoryId = null;
-          if (_type != 'expense') {
-            _isSplitMode = false;
-          }
-        }),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? activeColor : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey,
-              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-              fontSize: 13,
-            ),
-          ),
-        ),
       ),
     );
   }

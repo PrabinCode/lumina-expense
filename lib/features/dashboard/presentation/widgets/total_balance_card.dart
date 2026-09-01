@@ -4,6 +4,8 @@ import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/providers/privacy_mask_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/bouncy.dart';
+import '../../../../core/widgets/rolling_ticker.dart';
 
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../accounts/data/account_repository.dart';
@@ -38,9 +40,9 @@ class TotalBalanceCard extends ConsumerWidget {
       error: (_, _) => 0.0,
     );
 
-    return InkWell(
+    return Bouncy(
+      pressedScale: 0.98,
       onLongPress: () => ref.read(privacyMaskProvider.notifier).toggle(),
-      borderRadius: BorderRadius.circular(24),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
@@ -110,8 +112,8 @@ class TotalBalanceCard extends ConsumerWidget {
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(
-                CurrencyFormatter.format(totalNetWorth, mask: isMasked),
+              child: RollingTicker(
+                text: CurrencyFormatter.format(totalNetWorth, mask: isMasked),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 32,
@@ -149,7 +151,12 @@ class TotalBalanceCard extends ConsumerWidget {
                                 const Text('Income', style: TextStyle(color: Colors.white70, fontSize: 11)),
                                 Text(
                                   CurrencyFormatter.format(summary.totalIncome, mask: isMasked),
-                                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    fontFeatures: [FontFeature.tabularFigures()],
+                                  ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -180,7 +187,12 @@ class TotalBalanceCard extends ConsumerWidget {
                                 const Text('Expenses', style: TextStyle(color: Colors.white70, fontSize: 11)),
                                 Text(
                                   CurrencyFormatter.format(summary.totalExpense, mask: isMasked),
-                                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    fontFeatures: [FontFeature.tabularFigures()],
+                                  ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),

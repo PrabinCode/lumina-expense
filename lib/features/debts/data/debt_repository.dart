@@ -44,6 +44,25 @@ class DebtRepository {
     return (_db.delete(_db.debts)..where((tbl) => tbl.id.equals(id))).go();
   }
 
+  Future<void> restoreDebt(Debt debt) {
+    return _db.into(_db.debts).insert(
+          DebtsCompanion.insert(
+            id: debt.id,
+            personName: debt.personName,
+            amount: debt.amount,
+            type: debt.type,
+            settledAmount: Value(debt.settledAmount),
+            dueDate: Value(debt.dueDate),
+            notes: Value(debt.notes),
+            isSettled: Value(debt.isSettled),
+            createdAt: Value(debt.createdAt),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
+
+
   Future<void> recordSettlement(String id, double additionalSettledAmount) async {
     final existing = await (_db.select(_db.debts)..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
     if (existing == null) return;

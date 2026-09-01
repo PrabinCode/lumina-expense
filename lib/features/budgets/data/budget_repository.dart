@@ -98,7 +98,22 @@ class BudgetRepository {
   Future<int> deleteBudget(String id) {
     return (_db.delete(_db.budgets)..where((tbl) => tbl.id.equals(id))).go();
   }
+
+  Future<void> restoreBudget(Budget budget) {
+    return _db.into(_db.budgets).insert(
+          BudgetsCompanion.insert(
+            id: budget.id,
+            categoryId: budget.categoryId,
+            amountLimit: budget.amountLimit,
+            period: Value(budget.period),
+            startDate: Value(budget.startDate),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
 }
+
 
 final budgetRepositoryProvider = Provider<BudgetRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);

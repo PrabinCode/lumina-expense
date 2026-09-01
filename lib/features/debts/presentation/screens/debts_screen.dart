@@ -327,79 +327,120 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
                     final isLent = debt.type == 'lent';
                     final remaining = debt.amount - debt.settledAmount;
 
-                    return Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                    return Dismissible(
+                      key: Key(debt.id),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        alignment: Alignment.centerRight,
+                        decoration: BoxDecoration(
+                          color: AppColors.expense,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(Icons.delete_outline, color: Colors.white),
                       ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: (isLent ? AppColors.income : AppColors.expense).withValues(alpha: 0.15),
-                              shape: BoxShape.circle,
+                      onDismissed: (_) async {
+                        final repo = ref.read(debtRepositoryProvider);
+                        await repo.deleteDebt(debt.id);
+                        if (context.mounted) {
+                          final messenger = ScaffoldMessenger.of(context);
+                          messenger.clearSnackBars();
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text('Deleted record for ${debt.personName}'),
+                              duration: const Duration(seconds: 5),
+                              action: SnackBarAction(
+                                label: 'UNDO',
+                                textColor: AppColors.income,
+                                onPressed: () async {
+                                  await repo.restoreDebt(debt);
+                                  messenger.clearSnackBars();
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text('✓ Restored record for ${debt.personName}'),
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
-                            child: Icon(
-                              isLent ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-                              color: isLent ? AppColors.income : AppColors.expense,
-                              size: 20,
+                          );
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: (isLent ? AppColors.income : AppColors.expense).withValues(alpha: 0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                isLent ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                                color: isLent ? AppColors.income : AppColors.expense,
+                                size: 20,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(debt.personName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    isLent ? 'Owes you' : 'You owe',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isLent ? AppColors.income : AppColors.expense,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  if (debt.notes != null && debt.notes!.isNotEmpty) ...[
+                                    Text(
+                                      debt.notes!,
+                                      style: TextStyle(fontSize: 11, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                Text(debt.personName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                                const SizedBox(height: 2),
                                 Text(
-                                  isLent ? 'Owes you' : 'You owe',
+                                  CurrencyFormatter.format(remaining),
                                   style: TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
                                     color: isLent ? AppColors.income : AppColors.expense,
-                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                                if (debt.notes != null && debt.notes!.isNotEmpty) ...[
-                                  Text(
-                                    debt.notes!,
-                                    style: TextStyle(fontSize: 11, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                if (!debt.isSettled) ...[
+                                  const SizedBox(height: 4),
+                                  InkWell(
+                                    onTap: () => _showSettleDialog(debt),
+                                    child: const Text(
+                                      'Repay / Settle',
+                                      style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w700),
+                                    ),
                                   ),
+                                ] else ...[
+                                  const Text('Settled ✓', style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w600)),
                                 ],
                               ],
                             ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                CurrencyFormatter.format(remaining),
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  color: isLent ? AppColors.income : AppColors.expense,
-                                ),
-                              ),
-                              if (!debt.isSettled) ...[
-                                const SizedBox(height: 4),
-                                InkWell(
-                                  onTap: () => _showSettleDialog(debt),
-                                  child: const Text(
-                                    'Repay / Settle',
-                                    style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w700),
-                                  ),
-                                ),
-                              ] else ...[
-                                const Text('Settled ✓', style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w600)),
-                              ],
-                            ],
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   },

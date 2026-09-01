@@ -45,6 +45,26 @@ class GoalRepository {
     return (_db.delete(_db.goals)..where((tbl) => tbl.id.equals(id))).go();
   }
 
+  Future<void> restoreGoal(Goal goal) {
+    return _db.into(_db.goals).insert(
+          GoalsCompanion.insert(
+            id: goal.id,
+            name: goal.name,
+            targetAmount: goal.targetAmount,
+            currentAmount: Value(goal.currentAmount),
+            targetDate: Value(goal.targetDate),
+            iconName: Value(goal.iconName),
+            colorValue: Value(goal.colorValue),
+            notes: Value(goal.notes),
+            isCompleted: Value(goal.isCompleted),
+            createdAt: Value(goal.createdAt),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
+
+
   Future<void> depositToGoal(String id, double amount) async {
     final existing = await (_db.select(_db.goals)..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
     if (existing == null) return;

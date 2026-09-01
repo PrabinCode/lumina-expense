@@ -131,6 +131,28 @@ class SubscriptionRepository {
     return (_db.delete(_db.recurringTransactions)..where((tbl) => tbl.id.equals(id))).go();
   }
 
+  Future<void> restoreSubscription(RecurringTransaction sub) {
+    return _db.into(_db.recurringTransactions).insert(
+          RecurringTransactionsCompanion.insert(
+            id: sub.id,
+            title: sub.title,
+            amount: sub.amount,
+            categoryId: sub.categoryId,
+            accountId: sub.accountId,
+            frequency: Value(sub.frequency),
+            interval: Value(sub.interval),
+            nextDueDate: sub.nextDueDate,
+            autoLog: Value(sub.autoLog),
+            isActive: Value(sub.isActive),
+            notes: Value(sub.notes),
+            createdAt: Value(sub.createdAt),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
+
+
   Future<void> toggleSubscriptionActive(String id, bool isActive) {
     return (_db.update(_db.recurringTransactions)..where((tbl) => tbl.id.equals(id))).write(
       RecurringTransactionsCompanion(isActive: Value(isActive)),

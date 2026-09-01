@@ -572,18 +572,43 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                                 ),
                               ),
                               PopupMenuButton<String>(
-                                onSelected: (action) async {
-                                  if (action == 'edit') {
-                                    _showAddGoalDialog(editGoal: goal);
-                                  } else if (action == 'delete') {
-                                    await ref.read(goalRepositoryProvider).deleteGoal(goal.id);
-                                  }
-                                },
-                                itemBuilder: (context) => [
-                                  const PopupMenuItem(value: 'edit', child: Text('Edit Goal')),
-                                  const PopupMenuItem(value: 'delete', child: Text('Delete Goal', style: TextStyle(color: Colors.red))),
-                                ],
-                              ),
+                                  onSelected: (action) async {
+                                    if (action == 'edit') {
+                                      _showAddGoalDialog(editGoal: goal);
+                                    } else if (action == 'delete') {
+                                      final repo = ref.read(goalRepositoryProvider);
+                                      await repo.deleteGoal(goal.id);
+                                      if (context.mounted) {
+                                        final messenger = ScaffoldMessenger.of(context);
+                                        messenger.clearSnackBars();
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: Text('Deleted "${goal.name}"'),
+                                            duration: const Duration(seconds: 5),
+                                            action: SnackBarAction(
+                                              label: 'UNDO',
+                                              textColor: AppColors.income,
+                                              onPressed: () async {
+                                                await repo.restoreGoal(goal);
+                                                messenger.clearSnackBars();
+                                                messenger.showSnackBar(
+                                                  SnackBar(
+                                                    content: Text('✓ Restored "${goal.name}"'),
+                                                    duration: const Duration(seconds: 2),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  itemBuilder: (context) => [
+                                    const PopupMenuItem(value: 'edit', child: Text('Edit Goal')),
+                                    const PopupMenuItem(value: 'delete', child: Text('Delete Goal', style: TextStyle(color: Colors.red))),
+                                  ],
+                                ),
                             ],
                           ),
                           const SizedBox(height: 14),

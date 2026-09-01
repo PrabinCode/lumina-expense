@@ -235,11 +235,37 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> with Single
                 foregroundColor: Colors.white,
               ),
               onPressed: () async {
-                await ref.read(categoryRepositoryProvider).deleteCategory(category.id);
+                final repo = ref.read(categoryRepositoryProvider);
+                await repo.deleteCategory(category.id);
                 if (context.mounted) Navigator.pop(context);
+                if (context.mounted) {
+                  final messenger = ScaffoldMessenger.of(context);
+                  messenger.clearSnackBars();
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Deleted category "${category.name}"'),
+                      duration: const Duration(seconds: 5),
+                      action: SnackBarAction(
+                        label: 'UNDO',
+                        textColor: AppColors.income,
+                        onPressed: () async {
+                          await repo.restoreCategory(category);
+                          messenger.clearSnackBars();
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text('✓ Restored category "${category.name}"'),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  );
+                }
               },
               child: const Text('Delete'),
             ),
+
           ],
         );
       },

@@ -520,12 +520,36 @@ class _BudgetsScreenState extends ConsumerState<BudgetsScreen> {
                             ),
                             child: const Icon(Icons.delete_outline, color: Colors.white),
                           ),
-                          onDismissed: (_) {
-                            ref.read(budgetRepositoryProvider).deleteBudget(budget.id);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Deleted ${cat.name} budget')),
-                            );
+                          onDismissed: (_) async {
+                            final repo = ref.read(budgetRepositoryProvider);
+                            await repo.deleteBudget(budget.id);
+
+                            if (context.mounted) {
+                              final messenger = ScaffoldMessenger.of(context);
+                              messenger.clearSnackBars();
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text('Deleted ${cat.name} budget'),
+                                  duration: const Duration(seconds: 5),
+                                  action: SnackBarAction(
+                                    label: 'UNDO',
+                                    textColor: AppColors.income,
+                                    onPressed: () async {
+                                      await repo.restoreBudget(budget);
+                                      messenger.clearSnackBars();
+                                      messenger.showSnackBar(
+                                        SnackBar(
+                                          content: Text('✓ Restored ${cat.name} budget'),
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              );
+                            }
                           },
+
                           child: InkWell(
                             borderRadius: BorderRadius.circular(18),
                             onTap: () => _showCategoryTransactionsSheet(context, item),
