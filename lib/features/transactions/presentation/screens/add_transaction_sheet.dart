@@ -804,6 +804,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                   // Keypad (hidden if split items are manually entered to avoid scrolling clutter, or kept visible)
                   if (!_isSplitMode) ...[
                     NumKeypad(
+                      accentColor: primaryTypeColor,
                       onKeyPressed: _onKeypadPress,
                       onDelete: _onKeypadDelete,
                       onClear: _onKeypadClear,

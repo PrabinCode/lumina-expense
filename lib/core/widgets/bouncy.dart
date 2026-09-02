@@ -56,8 +56,11 @@ class _BouncyState extends State<Bouncy> with SingleTickerProviderStateMixin {
     super.dispose();
   }
 
+  int _downTimestamp = 0;
+
   void _handleTapDown(TapDownDetails _) {
     if (widget.onTap == null && widget.onLongPress == null) return;
+    _downTimestamp = DateTime.now().millisecondsSinceEpoch;
     if (widget.enableHaptics) {
       HapticFeedback.lightImpact();
     }
@@ -65,7 +68,15 @@ class _BouncyState extends State<Bouncy> with SingleTickerProviderStateMixin {
   }
 
   void _handleTapUp(TapUpDetails _) {
-    _controller.reverse();
+    final elapsed = DateTime.now().millisecondsSinceEpoch - _downTimestamp;
+    const minHoldMs = 85;
+    if (elapsed < minHoldMs) {
+      Future.delayed(Duration(milliseconds: minHoldMs - elapsed), () {
+        if (mounted) _controller.reverse();
+      });
+    } else {
+      _controller.reverse();
+    }
     widget.onTap?.call();
   }
 

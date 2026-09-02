@@ -384,7 +384,9 @@ class FinancialHealthService {
   }
 }
 
-final financialHealthProvider = FutureProvider.autoDispose<FinancialHealthReport>((ref) {
+final financialHealthProvider = StreamProvider.autoDispose<FinancialHealthReport>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return FinancialHealthService(db).calculateHealthScore();
+  return db.select(db.transactions).watch().asyncMap((_) async {
+    return FinancialHealthService(db).calculateHealthScore();
+  });
 });

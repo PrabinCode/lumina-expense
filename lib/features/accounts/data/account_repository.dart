@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
@@ -76,18 +78,46 @@ class AccountRepository {
 
 
 
-  /// Watch accounts with real-time computed balances
+  /// Watch accounts with real-time computed balances (reacts to both accounts and transactions)
   Stream<List<AccountWithBalance>> watchAccountsWithBalances() {
-    return watchAllAccounts().asyncMap((accountsList) async {
-      final results = <AccountWithBalance>[];
+    late StreamController<List<AccountWithBalance>> controller;
+    StreamSubscription? sub1;
+    StreamSubscription? sub2;
 
-      for (final acc in accountsList) {
-        final balance = await computeAccountBalance(acc.id, acc.initialBalance);
-        results.add(AccountWithBalance(account: acc, currentBalance: balance));
+    Future<void> emitBalances() async {
+      if (controller.isClosed) return;
+      try {
+        final accountsList = await getAllAccounts();
+        final results = <AccountWithBalance>[];
+
+        for (final acc in accountsList) {
+          final balance = await computeAccountBalance(acc.id, acc.initialBalance);
+          results.add(AccountWithBalance(account: acc, currentBalance: balance));
+        }
+
+        if (!controller.isClosed) {
+          controller.add(results);
+        }
+      } catch (e, st) {
+        if (!controller.isClosed) {
+          controller.addError(e, st);
+        }
       }
+    }
 
-      return results;
-    });
+    controller = StreamController<List<AccountWithBalance>>(
+      onListen: () {
+        emitBalances();
+        sub1 = watchAllAccounts().listen((_) => emitBalances());
+        sub2 = _db.select(_db.transactions).watch().listen((_) => emitBalances());
+      },
+      onCancel: () async {
+        await sub1?.cancel();
+        await sub2?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   /// Compute current balance = initialBalance + Income - Expense - OutgoingTransfers + IncomingTransfers
@@ -125,7 +155,5 @@ final accountsStreamProvider = StreamProvider<List<Account>>((ref) {
 });
 
 final accountsWithBalancesStreamProvider = StreamProvider<List<AccountWithBalance>>((ref) {
-  // Trigger update when transactions change as well
-  ref.watch(appDatabaseProvider);
   return ref.watch(accountRepositoryProvider).watchAccountsWithBalances();
 });
