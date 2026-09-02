@@ -328,6 +328,18 @@ class BackupRestoreService {
                   'createdAt': s.createdAt.toIso8601String(),
                 })
             .toList(),
+        'deletedItems': (await _db.select(_db.deletedItems).get())
+            .map((d) => {
+                  'id': d.id,
+                  'entityId': d.entityId,
+                  'entityType': d.entityType,
+                  'title': d.title,
+                  'subtitle': d.subtitle,
+                  'amount': d.amount,
+                  'payloadJson': d.payloadJson,
+                  'deletedAt': d.deletedAt.toIso8601String(),
+                })
+            .toList(),
       }
     };
   }
@@ -727,6 +739,24 @@ class BackupRestoreService {
                 isActive: Value(r['isActive'] ?? true),
                 notes: Value(r['notes']),
                 createdAt: Value(DateTime.tryParse(r['createdAt'] ?? '') ?? DateTime.now()),
+              ),
+            );
+      }
+
+      // 10. Insert Deleted Items (Recycle Bin)
+      await _db.delete(_db.deletedItems).go();
+      final deletedList = (data['deletedItems'] as List? ?? []);
+      for (final d in deletedList) {
+        await _db.into(_db.deletedItems).insert(
+              DeletedItemsCompanion.insert(
+                id: d['id'],
+                entityId: d['entityId'],
+                entityType: d['entityType'],
+                title: d['title'],
+                subtitle: Value(d['subtitle']),
+                amount: Value((d['amount'] as num?)?.toDouble()),
+                payloadJson: d['payloadJson'],
+                deletedAt: Value(DateTime.tryParse(d['deletedAt'] ?? '') ?? DateTime.now()),
               ),
             );
       }

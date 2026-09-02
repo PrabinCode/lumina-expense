@@ -130,4 +130,19 @@ class RecurringTransactions extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Recycle Bin / Soft-Deleted Items Table
+class DeletedItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get entityId => text()();
+  TextColumn get entityType => text()(); // 'transaction', 'budget', 'goal', 'debt', 'subscription', 'category'
+  TextColumn get title => text().withLength(min: 1, max: 150)();
+  TextColumn get subtitle => text().nullable()();
+  RealColumn get amount => real().nullable()();
+  TextColumn get payloadJson => text()(); // Serialized snapshot of entity & any relations (e.g. splits)
+  DateTimeColumn get deletedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 

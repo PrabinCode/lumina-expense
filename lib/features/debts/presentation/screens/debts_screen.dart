@@ -7,6 +7,8 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
+import '../../../../core/widgets/sonner_toast.dart';
+import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../data/debt_repository.dart';
 
 class DebtsScreen extends ConsumerStatefulWidget {
@@ -340,32 +342,20 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
                         child: const Icon(Icons.delete_outline, color: Colors.white),
                       ),
                       onDismissed: (_) async {
-                        final repo = ref.read(debtRepositoryProvider);
-                        await repo.deleteDebt(debt.id);
-                        if (context.mounted) {
-                          final messenger = ScaffoldMessenger.of(context);
-                          messenger.clearSnackBars();
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: Text('Deleted record for ${debt.personName}'),
-                              duration: const Duration(seconds: 5),
-                              action: SnackBarAction(
-                                label: 'UNDO',
-                                textColor: AppColors.income,
-                                onPressed: () async {
-                                  await repo.restoreDebt(debt);
-                                  messenger.clearSnackBars();
-                                  messenger.showSnackBar(
-                                    SnackBar(
-                                      content: Text('✓ Restored record for ${debt.personName}'),
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          );
-                        }
+                        final recycleRepo = ref.read(recycleBinRepositoryProvider);
+                        final recycleId = await recycleRepo.moveDebtToRecycleBin(debt.id);
+
+                        Sonner.success(
+                          'Moved "${debt.personName}" to Recycle Bin',
+                          description: 'Tap undo to restore or find it in Settings > Recycle Bin',
+                          undoLabel: 'UNDO',
+                          onUndo: () async {
+                            if (recycleId.isNotEmpty) {
+                              await recycleRepo.restoreItem(recycleId);
+                              Sonner.success('Restored record for ${debt.personName}');
+                            }
+                          },
+                        );
                       },
                       child: Container(
                         padding: const EdgeInsets.all(14),

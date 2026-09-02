@@ -39,8 +39,14 @@ class _SplitItemInput {
 
 class AddTransactionSheet extends ConsumerStatefulWidget {
   final String initialType; // 'expense', 'income', 'transfer'
+  /// When provided, the sheet opens in edit mode pre-filled with this transaction
+  final Transaction? transactionToEdit;
 
-  const AddTransactionSheet({super.key, this.initialType = 'expense'});
+  const AddTransactionSheet({
+    super.key,
+    this.initialType = 'expense',
+    this.transactionToEdit,
+  });
 
   @override
   ConsumerState<AddTransactionSheet> createState() => _AddTransactionSheetState();
@@ -61,10 +67,25 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   bool _isSplitMode = false;
   final List<_SplitItemInput> _splitItems = [];
 
+  bool get _isEditMode => widget.transactionToEdit != null;
+
   @override
   void initState() {
     super.initState();
-    _type = widget.initialType;
+    final tx = widget.transactionToEdit;
+    if (tx != null) {
+      // Edit mode — pre-populate all fields
+      _type = tx.type;
+      _amountStr = tx.amount % 1 == 0 ? tx.amount.toInt().toString() : tx.amount.toStringAsFixed(2);
+      _titleController.text = tx.title;
+      _noteController.text = tx.note ?? '';
+      _selectedCategoryId = tx.categoryId;
+      _selectedAccountId = tx.accountId;
+      _selectedToAccountId = tx.toAccountId;
+      _selectedDate = tx.date;
+    } else {
+      _type = widget.initialType;
+    }
   }
 
   @override
@@ -243,6 +264,33 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
       }
     }
 
+    if (_isEditMode) {
+      // --- UPDATE existing transaction ---
+      final existing = widget.transactionToEdit!;
+      final companion = TransactionsCompanion(
+        id: drift.Value(existing.id),
+        title: drift.Value(title),
+        amount: drift.Value(amount),
+        type: drift.Value(_type),
+        categoryId: drift.Value(_isSplitMode ? null : _selectedCategoryId),
+        accountId: drift.Value(_selectedAccountId!),
+        toAccountId: drift.Value(_selectedToAccountId),
+        date: drift.Value(_selectedDate),
+        note: drift.Value(_noteController.text.trim().isEmpty ? null : _noteController.text.trim()),
+        isSplit: drift.Value(_isSplitMode && _type == 'expense'),
+      );
+      await ref.read(transactionRepositoryProvider).updateTransaction(companion);
+      if (mounted) {
+        Navigator.pop(context);
+        Sonner.success(
+          'Updated "$title"',
+          description: CurrencyFormatter.format(amount),
+        );
+      }
+      return;
+    }
+
+    // --- CREATE new transaction ---
     const uuid = Uuid();
     final txId = uuid.v4();
 
@@ -812,7 +860,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                     const SizedBox(height: 16),
                   ],
 
-                  // Save Button
+                  // Save / Update Button
                   SizedBox(
                     width: double.infinity,
                     height: 52,
@@ -825,7 +873,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                         elevation: 0,
                       ),
                       child: Text(
-                        _isSplitMode ? 'Save Split Transaction' : 'Save Transaction',
+                        _isEditMode
+                            ? 'Update Transaction'
+                            : (_isSplitMode ? 'Save Split Transaction' : 'Save Transaction'),
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                       ),
                     ),

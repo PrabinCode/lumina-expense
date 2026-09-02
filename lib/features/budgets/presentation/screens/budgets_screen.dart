@@ -8,6 +8,8 @@ import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
+import '../../../../core/widgets/sonner_toast.dart';
+import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../../categories/data/category_repository.dart';
 import '../../../transactions/data/transaction_repository.dart';
 import '../../data/budget_repository.dart';
@@ -521,33 +523,20 @@ class _BudgetsScreenState extends ConsumerState<BudgetsScreen> {
                             child: const Icon(Icons.delete_outline, color: Colors.white),
                           ),
                           onDismissed: (_) async {
-                            final repo = ref.read(budgetRepositoryProvider);
-                            await repo.deleteBudget(budget.id);
+                            final recycleRepo = ref.read(recycleBinRepositoryProvider);
+                            final recycleId = await recycleRepo.moveBudgetToRecycleBin(budget.id);
 
-                            if (context.mounted) {
-                              final messenger = ScaffoldMessenger.of(context);
-                              messenger.clearSnackBars();
-                              messenger.showSnackBar(
-                                SnackBar(
-                                  content: Text('Deleted ${cat.name} budget'),
-                                  duration: const Duration(seconds: 5),
-                                  action: SnackBarAction(
-                                    label: 'UNDO',
-                                    textColor: AppColors.income,
-                                    onPressed: () async {
-                                      await repo.restoreBudget(budget);
-                                      messenger.clearSnackBars();
-                                      messenger.showSnackBar(
-                                        SnackBar(
-                                          content: Text('✓ Restored ${cat.name} budget'),
-                                          duration: const Duration(seconds: 2),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              );
-                            }
+                            Sonner.success(
+                              'Moved ${cat.name} budget to Recycle Bin',
+                              description: 'Tap undo to restore or find it in Settings > Recycle Bin',
+                              undoLabel: 'UNDO',
+                              onUndo: () async {
+                                if (recycleId.isNotEmpty) {
+                                  await recycleRepo.restoreItem(recycleId);
+                                  Sonner.success('Restored ${cat.name} budget');
+                                }
+                              },
+                            );
                           },
 
                           child: InkWell(

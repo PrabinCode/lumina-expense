@@ -9,6 +9,8 @@ import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
+import '../../../../core/widgets/sonner_toast.dart';
+import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../../accounts/data/account_repository.dart';
 import '../../../categories/data/category_repository.dart';
 import '../../data/subscription_repository.dart';
@@ -57,34 +59,22 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> with 
           ),
           TextButton(
             onPressed: () async {
-              final repo = ref.read(subscriptionRepositoryProvider);
+              final recycleRepo = ref.read(recycleBinRepositoryProvider);
               final subscription = sub.subscription;
-              await repo.deleteSubscription(subscription.id);
+              final recycleId = await recycleRepo.moveSubscriptionToRecycleBin(subscription.id);
               if (ctx.mounted) Navigator.pop(ctx);
-              if (context.mounted) {
-                final messenger = ScaffoldMessenger.of(context);
-                messenger.clearSnackBars();
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text('Deleted "${subscription.title}"'),
-                    duration: const Duration(seconds: 5),
-                    action: SnackBarAction(
-                      label: 'UNDO',
-                      textColor: AppColors.income,
-                      onPressed: () async {
-                        await repo.restoreSubscription(subscription);
-                        messenger.clearSnackBars();
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text('✓ Restored "${subscription.title}"'),
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                );
-              }
+
+              Sonner.success(
+                'Moved "${subscription.title}" to Recycle Bin',
+                description: 'Tap undo to restore or find it in Settings > Recycle Bin',
+                undoLabel: 'UNDO',
+                onUndo: () async {
+                  if (recycleId.isNotEmpty) {
+                    await recycleRepo.restoreItem(recycleId);
+                    Sonner.success('Restored "${subscription.title}"');
+                  }
+                },
+              );
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.expense),
             child: const Text('Delete'),

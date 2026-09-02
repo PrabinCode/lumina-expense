@@ -8,6 +8,8 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
+import '../../../../core/widgets/sonner_toast.dart';
+import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../data/goal_repository.dart';
 
 class GoalsScreen extends ConsumerStatefulWidget {
@@ -576,32 +578,20 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                                     if (action == 'edit') {
                                       _showAddGoalDialog(editGoal: goal);
                                     } else if (action == 'delete') {
-                                      final repo = ref.read(goalRepositoryProvider);
-                                      await repo.deleteGoal(goal.id);
-                                      if (context.mounted) {
-                                        final messenger = ScaffoldMessenger.of(context);
-                                        messenger.clearSnackBars();
-                                        messenger.showSnackBar(
-                                          SnackBar(
-                                            content: Text('Deleted "${goal.name}"'),
-                                            duration: const Duration(seconds: 5),
-                                            action: SnackBarAction(
-                                              label: 'UNDO',
-                                              textColor: AppColors.income,
-                                              onPressed: () async {
-                                                await repo.restoreGoal(goal);
-                                                messenger.clearSnackBars();
-                                                messenger.showSnackBar(
-                                                  SnackBar(
-                                                    content: Text('✓ Restored "${goal.name}"'),
-                                                    duration: const Duration(seconds: 2),
-                                                  ),
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                        );
-                                      }
+                                      final recycleRepo = ref.read(recycleBinRepositoryProvider);
+                                      final recycleId = await recycleRepo.moveGoalToRecycleBin(goal.id);
+
+                                      Sonner.success(
+                                        'Moved "${goal.name}" to Recycle Bin',
+                                        description: 'Tap undo to restore or find it in Settings > Recycle Bin',
+                                        undoLabel: 'UNDO',
+                                        onUndo: () async {
+                                          if (recycleId.isNotEmpty) {
+                                            await recycleRepo.restoreItem(recycleId);
+                                            Sonner.success('Restored "${goal.name}"');
+                                          }
+                                        },
+                                      );
                                     }
                                   },
                                   itemBuilder: (context) => [

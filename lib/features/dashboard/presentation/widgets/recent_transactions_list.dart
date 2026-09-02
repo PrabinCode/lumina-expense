@@ -10,6 +10,7 @@ import '../../../../core/utils/icon_helper.dart';
 import '../../../../core/utils/query_parser.dart';
 import '../../../../core/widgets/bouncy.dart';
 import '../../../../core/widgets/sonner_toast.dart';
+import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../../transactions/data/transaction_repository.dart';
 import '../../../transactions/presentation/widgets/power_search_bar.dart';
 import '../../../transactions/presentation/widgets/transaction_batch_action_bar.dart';
@@ -362,17 +363,16 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
                         child: const Icon(Icons.delete_outline, color: Colors.white),
                       ),
                       onDismissed: (_) async {
-                        final repo = ref.read(transactionRepositoryProvider);
-                        final snapshot = await repo.getTransactionSnapshot(tx.id);
-                        await repo.deleteTransaction(tx.id);
+                        final recycleRepo = ref.read(recycleBinRepositoryProvider);
+                        final recycleId = await recycleRepo.moveTransactionToRecycleBin(tx.id);
 
                         Sonner.success(
-                          'Deleted "${tx.title}"',
-                          description: 'Tap undo to restore this entry',
+                          'Moved "${tx.title}" to Recycle Bin',
+                          description: 'Tap undo to restore or find it in Settings > Recycle Bin',
                           undoLabel: 'UNDO',
                           onUndo: () async {
-                            if (snapshot != null) {
-                              await repo.restoreTransactionSnapshot(snapshot);
+                            if (recycleId.isNotEmpty) {
+                              await recycleRepo.restoreItem(recycleId);
                               Sonner.success('Restored "${tx.title}"');
                             }
                           },

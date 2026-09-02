@@ -4464,6 +4464,525 @@ class RecurringTransactionsCompanion
   }
 }
 
+class $DeletedItemsTable extends DeletedItems
+    with TableInfo<$DeletedItemsTable, DeletedItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DeletedItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entityIdMeta = const VerificationMeta(
+    'entityId',
+  );
+  @override
+  late final GeneratedColumn<String> entityId = GeneratedColumn<String>(
+    'entity_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entityTypeMeta = const VerificationMeta(
+    'entityType',
+  );
+  @override
+  late final GeneratedColumn<String> entityType = GeneratedColumn<String>(
+    'entity_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 150,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _subtitleMeta = const VerificationMeta(
+    'subtitle',
+  );
+  @override
+  late final GeneratedColumn<String> subtitle = GeneratedColumn<String>(
+    'subtitle',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+    'amount',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    entityId,
+    entityType,
+    title,
+    subtitle,
+    amount,
+    payloadJson,
+    deletedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'deleted_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DeletedItem> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('entity_id')) {
+      context.handle(
+        _entityIdMeta,
+        entityId.isAcceptableOrUnknown(data['entity_id']!, _entityIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entityIdMeta);
+    }
+    if (data.containsKey('entity_type')) {
+      context.handle(
+        _entityTypeMeta,
+        entityType.isAcceptableOrUnknown(data['entity_type']!, _entityTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entityTypeMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('subtitle')) {
+      context.handle(
+        _subtitleMeta,
+        subtitle.isAcceptableOrUnknown(data['subtitle']!, _subtitleMeta),
+      );
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DeletedItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DeletedItem(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      entityId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entity_id'],
+      )!,
+      entityType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entity_type'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      subtitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subtitle'],
+      ),
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}amount'],
+      ),
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DeletedItemsTable createAlias(String alias) {
+    return $DeletedItemsTable(attachedDatabase, alias);
+  }
+}
+
+class DeletedItem extends DataClass implements Insertable<DeletedItem> {
+  final String id;
+  final String entityId;
+  final String entityType;
+  final String title;
+  final String? subtitle;
+  final double? amount;
+  final String payloadJson;
+  final DateTime deletedAt;
+  const DeletedItem({
+    required this.id,
+    required this.entityId,
+    required this.entityType,
+    required this.title,
+    this.subtitle,
+    this.amount,
+    required this.payloadJson,
+    required this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['entity_id'] = Variable<String>(entityId);
+    map['entity_type'] = Variable<String>(entityType);
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || subtitle != null) {
+      map['subtitle'] = Variable<String>(subtitle);
+    }
+    if (!nullToAbsent || amount != null) {
+      map['amount'] = Variable<double>(amount);
+    }
+    map['payload_json'] = Variable<String>(payloadJson);
+    map['deleted_at'] = Variable<DateTime>(deletedAt);
+    return map;
+  }
+
+  DeletedItemsCompanion toCompanion(bool nullToAbsent) {
+    return DeletedItemsCompanion(
+      id: Value(id),
+      entityId: Value(entityId),
+      entityType: Value(entityType),
+      title: Value(title),
+      subtitle: subtitle == null && nullToAbsent
+          ? const Value.absent()
+          : Value(subtitle),
+      amount: amount == null && nullToAbsent
+          ? const Value.absent()
+          : Value(amount),
+      payloadJson: Value(payloadJson),
+      deletedAt: Value(deletedAt),
+    );
+  }
+
+  factory DeletedItem.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DeletedItem(
+      id: serializer.fromJson<String>(json['id']),
+      entityId: serializer.fromJson<String>(json['entityId']),
+      entityType: serializer.fromJson<String>(json['entityType']),
+      title: serializer.fromJson<String>(json['title']),
+      subtitle: serializer.fromJson<String?>(json['subtitle']),
+      amount: serializer.fromJson<double?>(json['amount']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'entityId': serializer.toJson<String>(entityId),
+      'entityType': serializer.toJson<String>(entityType),
+      'title': serializer.toJson<String>(title),
+      'subtitle': serializer.toJson<String?>(subtitle),
+      'amount': serializer.toJson<double?>(amount),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'deletedAt': serializer.toJson<DateTime>(deletedAt),
+    };
+  }
+
+  DeletedItem copyWith({
+    String? id,
+    String? entityId,
+    String? entityType,
+    String? title,
+    Value<String?> subtitle = const Value.absent(),
+    Value<double?> amount = const Value.absent(),
+    String? payloadJson,
+    DateTime? deletedAt,
+  }) => DeletedItem(
+    id: id ?? this.id,
+    entityId: entityId ?? this.entityId,
+    entityType: entityType ?? this.entityType,
+    title: title ?? this.title,
+    subtitle: subtitle.present ? subtitle.value : this.subtitle,
+    amount: amount.present ? amount.value : this.amount,
+    payloadJson: payloadJson ?? this.payloadJson,
+    deletedAt: deletedAt ?? this.deletedAt,
+  );
+  DeletedItem copyWithCompanion(DeletedItemsCompanion data) {
+    return DeletedItem(
+      id: data.id.present ? data.id.value : this.id,
+      entityId: data.entityId.present ? data.entityId.value : this.entityId,
+      entityType: data.entityType.present
+          ? data.entityType.value
+          : this.entityType,
+      title: data.title.present ? data.title.value : this.title,
+      subtitle: data.subtitle.present ? data.subtitle.value : this.subtitle,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeletedItem(')
+          ..write('id: $id, ')
+          ..write('entityId: $entityId, ')
+          ..write('entityType: $entityType, ')
+          ..write('title: $title, ')
+          ..write('subtitle: $subtitle, ')
+          ..write('amount: $amount, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    entityId,
+    entityType,
+    title,
+    subtitle,
+    amount,
+    payloadJson,
+    deletedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DeletedItem &&
+          other.id == this.id &&
+          other.entityId == this.entityId &&
+          other.entityType == this.entityType &&
+          other.title == this.title &&
+          other.subtitle == this.subtitle &&
+          other.amount == this.amount &&
+          other.payloadJson == this.payloadJson &&
+          other.deletedAt == this.deletedAt);
+}
+
+class DeletedItemsCompanion extends UpdateCompanion<DeletedItem> {
+  final Value<String> id;
+  final Value<String> entityId;
+  final Value<String> entityType;
+  final Value<String> title;
+  final Value<String?> subtitle;
+  final Value<double?> amount;
+  final Value<String> payloadJson;
+  final Value<DateTime> deletedAt;
+  final Value<int> rowid;
+  const DeletedItemsCompanion({
+    this.id = const Value.absent(),
+    this.entityId = const Value.absent(),
+    this.entityType = const Value.absent(),
+    this.title = const Value.absent(),
+    this.subtitle = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DeletedItemsCompanion.insert({
+    required String id,
+    required String entityId,
+    required String entityType,
+    required String title,
+    this.subtitle = const Value.absent(),
+    this.amount = const Value.absent(),
+    required String payloadJson,
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       entityId = Value(entityId),
+       entityType = Value(entityType),
+       title = Value(title),
+       payloadJson = Value(payloadJson);
+  static Insertable<DeletedItem> custom({
+    Expression<String>? id,
+    Expression<String>? entityId,
+    Expression<String>? entityType,
+    Expression<String>? title,
+    Expression<String>? subtitle,
+    Expression<double>? amount,
+    Expression<String>? payloadJson,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (entityId != null) 'entity_id': entityId,
+      if (entityType != null) 'entity_type': entityType,
+      if (title != null) 'title': title,
+      if (subtitle != null) 'subtitle': subtitle,
+      if (amount != null) 'amount': amount,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DeletedItemsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? entityId,
+    Value<String>? entityType,
+    Value<String>? title,
+    Value<String?>? subtitle,
+    Value<double?>? amount,
+    Value<String>? payloadJson,
+    Value<DateTime>? deletedAt,
+    Value<int>? rowid,
+  }) {
+    return DeletedItemsCompanion(
+      id: id ?? this.id,
+      entityId: entityId ?? this.entityId,
+      entityType: entityType ?? this.entityType,
+      title: title ?? this.title,
+      subtitle: subtitle ?? this.subtitle,
+      amount: amount ?? this.amount,
+      payloadJson: payloadJson ?? this.payloadJson,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (entityId.present) {
+      map['entity_id'] = Variable<String>(entityId.value);
+    }
+    if (entityType.present) {
+      map['entity_type'] = Variable<String>(entityType.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (subtitle.present) {
+      map['subtitle'] = Variable<String>(subtitle.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeletedItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('entityId: $entityId, ')
+          ..write('entityType: $entityType, ')
+          ..write('title: $title, ')
+          ..write('subtitle: $subtitle, ')
+          ..write('amount: $amount, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4477,6 +4996,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $TransactionSplitsTable(this);
   late final $RecurringTransactionsTable recurringTransactions =
       $RecurringTransactionsTable(this);
+  late final $DeletedItemsTable deletedItems = $DeletedItemsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4490,6 +5010,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     goals,
     transactionSplits,
     recurringTransactions,
+    deletedItems,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -8649,6 +9170,267 @@ typedef $$RecurringTransactionsTableProcessedTableManager =
       RecurringTransaction,
       PrefetchHooks Function({bool categoryId, bool accountId})
     >;
+typedef $$DeletedItemsTableCreateCompanionBuilder =
+    DeletedItemsCompanion Function({
+      required String id,
+      required String entityId,
+      required String entityType,
+      required String title,
+      Value<String?> subtitle,
+      Value<double?> amount,
+      required String payloadJson,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+typedef $$DeletedItemsTableUpdateCompanionBuilder =
+    DeletedItemsCompanion Function({
+      Value<String> id,
+      Value<String> entityId,
+      Value<String> entityType,
+      Value<String> title,
+      Value<String?> subtitle,
+      Value<double?> amount,
+      Value<String> payloadJson,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+
+class $$DeletedItemsTableFilterComposer
+    extends Composer<_$AppDatabase, $DeletedItemsTable> {
+  $$DeletedItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get entityId => $composableBuilder(
+    column: $table.entityId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get entityType => $composableBuilder(
+    column: $table.entityType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subtitle => $composableBuilder(
+    column: $table.subtitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DeletedItemsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DeletedItemsTable> {
+  $$DeletedItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entityId => $composableBuilder(
+    column: $table.entityId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entityType => $composableBuilder(
+    column: $table.entityType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subtitle => $composableBuilder(
+    column: $table.subtitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DeletedItemsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DeletedItemsTable> {
+  $$DeletedItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get entityId =>
+      $composableBuilder(column: $table.entityId, builder: (column) => column);
+
+  GeneratedColumn<String> get entityType => $composableBuilder(
+    column: $table.entityType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get subtitle =>
+      $composableBuilder(column: $table.subtitle, builder: (column) => column);
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$DeletedItemsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DeletedItemsTable,
+          DeletedItem,
+          $$DeletedItemsTableFilterComposer,
+          $$DeletedItemsTableOrderingComposer,
+          $$DeletedItemsTableAnnotationComposer,
+          $$DeletedItemsTableCreateCompanionBuilder,
+          $$DeletedItemsTableUpdateCompanionBuilder,
+          (
+            DeletedItem,
+            BaseReferences<_$AppDatabase, $DeletedItemsTable, DeletedItem>,
+          ),
+          DeletedItem,
+          PrefetchHooks Function()
+        > {
+  $$DeletedItemsTableTableManager(_$AppDatabase db, $DeletedItemsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DeletedItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DeletedItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DeletedItemsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> entityId = const Value.absent(),
+                Value<String> entityType = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String?> subtitle = const Value.absent(),
+                Value<double?> amount = const Value.absent(),
+                Value<String> payloadJson = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DeletedItemsCompanion(
+                id: id,
+                entityId: entityId,
+                entityType: entityType,
+                title: title,
+                subtitle: subtitle,
+                amount: amount,
+                payloadJson: payloadJson,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String entityId,
+                required String entityType,
+                required String title,
+                Value<String?> subtitle = const Value.absent(),
+                Value<double?> amount = const Value.absent(),
+                required String payloadJson,
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DeletedItemsCompanion.insert(
+                id: id,
+                entityId: entityId,
+                entityType: entityType,
+                title: title,
+                subtitle: subtitle,
+                amount: amount,
+                payloadJson: payloadJson,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DeletedItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DeletedItemsTable,
+      DeletedItem,
+      $$DeletedItemsTableFilterComposer,
+      $$DeletedItemsTableOrderingComposer,
+      $$DeletedItemsTableAnnotationComposer,
+      $$DeletedItemsTableCreateCompanionBuilder,
+      $$DeletedItemsTableUpdateCompanionBuilder,
+      (
+        DeletedItem,
+        BaseReferences<_$AppDatabase, $DeletedItemsTable, DeletedItem>,
+      ),
+      DeletedItem,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -8669,4 +9451,6 @@ class $AppDatabaseManager {
       $$TransactionSplitsTableTableManager(_db, _db.transactionSplits);
   $$RecurringTransactionsTableTableManager get recurringTransactions =>
       $$RecurringTransactionsTableTableManager(_db, _db.recurringTransactions);
+  $$DeletedItemsTableTableManager get deletedItems =>
+      $$DeletedItemsTableTableManager(_db, _db.deletedItems);
 }

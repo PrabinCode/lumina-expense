@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/icon_helper.dart';
+import '../../../../core/widgets/sonner_toast.dart';
 import '../../data/category_repository.dart';
 
 class CategoriesScreen extends ConsumerStatefulWidget {
@@ -238,30 +239,16 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> with Single
                 final repo = ref.read(categoryRepositoryProvider);
                 await repo.deleteCategory(category.id);
                 if (context.mounted) Navigator.pop(context);
-                if (context.mounted) {
-                  final messenger = ScaffoldMessenger.of(context);
-                  messenger.clearSnackBars();
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text('Deleted category "${category.name}"'),
-                      duration: const Duration(seconds: 5),
-                      action: SnackBarAction(
-                        label: 'UNDO',
-                        textColor: AppColors.income,
-                        onPressed: () async {
-                          await repo.restoreCategory(category);
-                          messenger.clearSnackBars();
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: Text('✓ Restored category "${category.name}"'),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  );
-                }
+
+                Sonner.success(
+                  'Deleted category "${category.name}"',
+                  description: 'Tap undo to restore',
+                  undoLabel: 'UNDO',
+                  onUndo: () async {
+                    await repo.restoreCategory(category);
+                    Sonner.success('Restored category "${category.name}"');
+                  },
+                );
               },
               child: const Text('Delete'),
             ),

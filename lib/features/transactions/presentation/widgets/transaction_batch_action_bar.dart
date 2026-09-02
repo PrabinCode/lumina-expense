@@ -5,6 +5,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/icon_helper.dart';
 import '../../../accounts/data/account_repository.dart';
 import '../../../categories/data/category_repository.dart';
+import '../../../recycle_bin/data/recycle_bin_repository.dart';
+import '../../../../core/widgets/sonner_toast.dart';
 import '../../data/transaction_repository.dart';
 
 class TransactionBatchActionBar extends ConsumerWidget {
@@ -235,36 +237,22 @@ class TransactionBatchActionBar extends ConsumerWidget {
     );
 
     if (confirmed == true) {
-      final repo = ref.read(transactionRepositoryProvider);
+      final recycleRepo = ref.read(recycleBinRepositoryProvider);
       final ids = selectedIds.toList();
-      final snapshots = await repo.getBatchTransactionSnapshots(ids);
-      final deleted = await repo.batchDeleteTransactions(ids);
+      final count = ids.length;
+      final recycleIds = await recycleRepo.moveBatchTransactionsToRecycleBin(ids);
       onClearSelection();
 
-      if (context.mounted) {
-        final messenger = ScaffoldMessenger.of(context);
-        messenger.clearSnackBars();
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('🗑️ Deleted $deleted transaction${deleted > 1 ? "s" : ""}'),
-            duration: const Duration(seconds: 5),
-            action: SnackBarAction(
-              label: 'UNDO',
-              textColor: Colors.amber,
-              onPressed: () async {
-                await repo.restoreBatchTransactionSnapshots(snapshots);
-                messenger.clearSnackBars();
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text('✓ Restored $deleted transaction${deleted > 1 ? "s" : ""}'),
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-      }
+      Sonner.success(
+        'Moved $count transaction${count > 1 ? "s" : ""} to Recycle Bin',
+        description: 'Tap undo to restore or manage in Settings > Recycle Bin',
+        undoLabel: 'UNDO',
+        duration: const Duration(seconds: 5),
+        onUndo: () async {
+          await recycleRepo.restoreBatch(recycleIds);
+          Sonner.success('Restored $count transaction${count > 1 ? "s" : ""}');
+        },
+      );
     }
 
 

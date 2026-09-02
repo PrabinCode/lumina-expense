@@ -8,8 +8,11 @@ import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
+import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../../transactions/data/transaction_repository.dart';
+import '../../../transactions/presentation/screens/add_transaction_sheet.dart';
 import '../../domain/models/analytics_models.dart';
+import '../../../../core/widgets/sonner_toast.dart';
 import '../widgets/cash_flow_bar_chart.dart';
 import '../widgets/category_trend_list.dart';
 import '../widgets/day_of_week_heatmap.dart';
@@ -251,13 +254,65 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
                                       '${DateFormat('MMM d, yyyy').format(tx.date)} • ${item.account.name}${tx.note != null && tx.note!.isNotEmpty ? " • ${tx.note}" : ""}',
                                       style: const TextStyle(fontSize: 11, color: Colors.grey),
                                     ),
-                                    trailing: Text(
-                                      '-${CurrencyFormatter.format(tx.amount)}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                        color: AppColors.expense,
-                                      ),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          '-${CurrencyFormatter.format(tx.amount)}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: AppColors.expense,
+                                          ),
+                                        ),
+                                        PopupMenuButton<String>(
+                                          icon: const Icon(Icons.more_vert_rounded, size: 18, color: Colors.grey),
+                                          onSelected: (val) async {
+                                            if (val == 'edit') {
+                                              if (context.mounted) {
+                                                await showModalBottomSheet(
+                                                  context: context,
+                                                  isScrollControlled: true,
+                                                  backgroundColor: Colors.transparent,
+                                                  builder: (_) => AddTransactionSheet(
+                                                    transactionToEdit: tx,
+                                                  ),
+                                                );
+                                              }
+                                            } else if (val == 'delete') {
+                                              await ref.read(recycleBinRepositoryProvider).moveTransactionToRecycleBin(tx.id);
+                                              if (context.mounted) {
+                                                Sonner.success(
+                                                  'Moved to Trash',
+                                                  description: '"${tx.title}" can be restored from Recycle Bin',
+                                                );
+                                              }
+                                            }
+                                          },
+                                          itemBuilder: (ctx) => [
+                                            const PopupMenuItem(
+                                              value: 'edit',
+                                              child: Row(
+                                                children: [
+                                                  Icon(Icons.edit_rounded, size: 18, color: AppColors.primary),
+                                                  SizedBox(width: 8),
+                                                  Text('Edit'),
+                                                ],
+                                              ),
+                                            ),
+                                            const PopupMenuItem(
+                                              value: 'delete',
+                                              child: Row(
+                                                children: [
+                                                  Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.expense),
+                                                  SizedBox(width: 8),
+                                                  Text('Move to Trash'),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
                                     ),
                                   );
                                 },
@@ -455,13 +510,65 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
                                           '${DateFormat('MMM d, yyyy').format(tx.date)} • ${cat?.name ?? (isIncome ? "Income" : "Expense")} • ${item.account.name}',
                                           style: const TextStyle(fontSize: 11, color: Colors.grey),
                                         ),
-                                        trailing: Text(
-                                          '${isIncome ? "+" : "-"}${CurrencyFormatter.format(tx.amount)}',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                            color: isIncome ? AppColors.income : AppColors.expense,
-                                          ),
+                                        trailing: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              '${isIncome ? "+" : "-"}${CurrencyFormatter.format(tx.amount)}',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                                color: isIncome ? AppColors.income : AppColors.expense,
+                                              ),
+                                            ),
+                                            PopupMenuButton<String>(
+                                              icon: const Icon(Icons.more_vert_rounded, size: 18, color: Colors.grey),
+                                              onSelected: (val) async {
+                                                if (val == 'edit') {
+                                                  if (context.mounted) {
+                                                    await showModalBottomSheet(
+                                                      context: context,
+                                                      isScrollControlled: true,
+                                                      backgroundColor: Colors.transparent,
+                                                      builder: (_) => AddTransactionSheet(
+                                                        transactionToEdit: tx,
+                                                      ),
+                                                    );
+                                                  }
+                                                } else if (val == 'delete') {
+                                                  await ref.read(recycleBinRepositoryProvider).moveTransactionToRecycleBin(tx.id);
+                                                  if (context.mounted) {
+                                                    Sonner.success(
+                                                      'Moved to Trash',
+                                                      description: '"${tx.title}" can be restored from Recycle Bin',
+                                                    );
+                                                  }
+                                                }
+                                              },
+                                              itemBuilder: (ctx) => [
+                                                const PopupMenuItem(
+                                                  value: 'edit',
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(Icons.edit_rounded, size: 18, color: AppColors.primary),
+                                                      SizedBox(width: 8),
+                                                      Text('Edit'),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const PopupMenuItem(
+                                                  value: 'delete',
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.expense),
+                                                      SizedBox(width: 8),
+                                                      Text('Move to Trash'),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
                                         ),
                                       );
                                     },

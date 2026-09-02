@@ -15,6 +15,8 @@ import '../../../debts/presentation/screens/debts_screen.dart';
 import '../../../goals/presentation/screens/goals_screen.dart';
 import '../../../health/presentation/screens/financial_health_screen.dart';
 import '../../../subscriptions/presentation/screens/subscriptions_screen.dart';
+import '../../../recycle_bin/data/recycle_bin_repository.dart';
+import '../../../recycle_bin/presentation/screens/recycle_bin_screen.dart';
 import '../../../onboarding/presentation/screens/onboarding_screen.dart';
 import 'feedback_report_sheet.dart';
 import 'storage_maintenance_screen.dart';
@@ -533,6 +535,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 8),
 
               _SettingsNavTile(
+                title: 'Recycle Bin (Trash)',
+                subtitle: 'Restore deleted transactions, budgets & items',
+                icon: Icons.delete_outline_rounded,
+                iconColor: AppColors.expense,
+                trailing: Consumer(
+                  builder: (context, ref, _) {
+                    final countAsync = ref.watch(deletedItemsCountProvider);
+                    final count = countAsync.valueOrNull ?? 0;
+                    if (count == 0) return const Icon(Icons.chevron_right_rounded, color: Colors.grey);
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.expense.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: const TextStyle(
+                          color: AppColors.expense,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RecycleBinScreen())),
+              ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
                 title: 'Storage & Maintenance',
                 subtitle: 'SQLite VACUUM, integrity validation & cache cleaner',
                 icon: Icons.storage_rounded,
@@ -805,6 +838,7 @@ class _SettingsNavTile extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final VoidCallback onTap;
+  final Widget? trailing;
 
   const _SettingsNavTile({
     required this.title,
@@ -812,6 +846,7 @@ class _SettingsNavTile extends StatelessWidget {
     required this.icon,
     required this.iconColor,
     required this.onTap,
+    this.trailing,
   });
 
   @override
@@ -838,7 +873,7 @@ class _SettingsNavTile extends StatelessWidget {
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+        trailing: trailing ?? const Icon(Icons.chevron_right_rounded, color: Colors.grey),
       ),
     );
   }
