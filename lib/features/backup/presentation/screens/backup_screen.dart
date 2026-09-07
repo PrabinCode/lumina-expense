@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../../core/services/app_review_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../services/backup_restore_service.dart';
 import 'csv_mapper_screen.dart';
@@ -20,6 +21,8 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   List<BackupFileInfo> _localBackups = [];
   String _autoFrequency = 'off';
   int _maxBackups = 5;
+  DateTime? _lastAutoBackupTime;
+  String _backupFilter = 'all'; // 'all', 'manual', 'auto'
 
   @override
   void initState() {
@@ -33,6 +36,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     final backups = await service.listLocalBackups();
     final freq = await service.getAutoBackupFrequency();
     final maxF = await service.getMaxBackupFiles();
+    final lastAuto = await service.getLastAutoBackupTime();
 
     if (mounted) {
       setState(() {
@@ -40,7 +44,35 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
         _localBackups = backups;
         _autoFrequency = freq;
         _maxBackups = maxF;
+        _lastAutoBackupTime = lastAuto;
       });
+    }
+  }
+
+  Future<void> _handleRunAutoBackupNow() async {
+    setState(() => _isLoading = true);
+    try {
+      final service = ref.read(backupRestoreServiceProvider);
+      final path = await service.createBackup(isAuto: true);
+      final now = DateTime.now();
+      await service.recordAutoBackupTimestamp(now);
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ Automatic backup executed!\nSaved to: $path'),
+            backgroundColor: const Color(0xFF6366F1),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Auto-backup failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -62,37 +94,14 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     required String description,
     bool isNew = false,
   }) async {
-    final controller = TextEditingController();
-    return showDialog<String>(
+    return showModalBottomSheet<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(description, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              obscureText: true,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: isNew ? 'Set Backup Password' : 'Enter Password',
-                prefixIcon: const Icon(Icons.lock_outline_rounded),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: Text(isNew ? 'Encrypt & Save' : 'Unlock'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _PasswordPromptSheet(
+        title: title,
+        description: description,
+        isNew: isNew,
       ),
     );
   }
@@ -100,31 +109,92 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   Future<void> _handleCreateBackup() async {
     final choice = await showModalBottomSheet<String>(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Choose Backup Type', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.lock_rounded, color: Colors.amber),
-              title: const Text('Encrypted Backup (.lumina.enc)', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('Password-protected with AES-256 encryption', style: TextStyle(fontSize: 12)),
-              onTap: () => Navigator.pop(ctx, 'encrypted'),
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.backup_rounded, color: AppColors.primary, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Choose Backup Type',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.lock_rounded, color: Colors.amber),
+                  ),
+                  title: const Text('Encrypted Backup (.lumina.enc)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Password-protected with AES-256 encryption', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  onTap: () => Navigator.pop(ctx, 'encrypted'),
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.file_copy_outlined, color: AppColors.primary),
+                  ),
+                  title: const Text('Standard JSON Backup (.json)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Standard plain JSON export', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  onTap: () => Navigator.pop(ctx, 'plain'),
+                ),
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.file_copy_outlined, color: AppColors.primary),
-              title: const Text('Standard JSON Backup (.json)', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('Standard plain JSON export', style: TextStyle(fontSize: 12)),
-              onTap: () => Navigator.pop(ctx, 'plain'),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
 
     if (choice == null) return;
@@ -144,6 +214,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       final service = ref.read(backupRestoreServiceProvider);
       final path = await service.createBackup(password: password);
       await _loadData();
+      ref.read(appReviewServiceProvider).recordBackupCompleted();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -188,36 +259,117 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   }
 
   Future<void> _handleShareJson() async {
-    final password = await showDialog<String?>(
+    final choice = await showModalBottomSheet<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Export Backup Snapshot', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Would you like to encrypt this backup with a password before sharing?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, ''), child: const Text('Plain JSON')),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.black87),
-            icon: const Icon(Icons.lock_rounded, size: 16),
-            label: const Text('Set Password'),
-            onPressed: () async {
-              final pwd = await _promptPasswordDialog(
-                title: 'Set Backup Password',
-                description: 'Enter a password to encrypt the shared backup file.',
-                isNew: true,
-              );
-              if (ctx.mounted) Navigator.pop(ctx, pwd);
-            },
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
-        ],
-      ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.share_rounded, color: AppColors.primary, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Export Backup Snapshot',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Choose format for sharing or transferring your backup:',
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.lock_rounded, color: Colors.amber),
+                  ),
+                  title: const Text('Encrypted Backup (.lumina.enc)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('AES-256 password encrypted (safest for sharing)', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  onTap: () => Navigator.pop(ctx, 'encrypted'),
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.file_copy_outlined, color: AppColors.primary),
+                  ),
+                  title: const Text('Standard Plain JSON (.json)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Unencrypted plain JSON snapshot', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  onTap: () => Navigator.pop(ctx, 'plain'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
 
-    if (password == null) return;
+    if (choice == null) return;
+
+    String? password;
+    if (choice == 'encrypted') {
+      password = await _promptPasswordDialog(
+        title: 'Set Backup Password',
+        description: 'Enter a password to encrypt the shared backup file.',
+        isNew: true,
+      );
+      if (password == null || password.trim().isEmpty) return;
+    }
 
     setState(() => _isLoading = true);
     try {
       await ref.read(backupRestoreServiceProvider).exportBackupJson(
-            password: password.isEmpty ? null : password,
+            password: password,
           );
     } catch (e) {
       if (mounted) {
@@ -245,7 +397,6 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     }
   }
 
-
   Future<void> _confirmAndRestore(String filePath, {String? password}) async {
     setState(() => _isLoading = true);
     try {
@@ -254,51 +405,14 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
       if (!mounted) return;
 
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showModalBottomSheet<bool>(
         context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: Row(
-              children: [
-                if (password != null) const Padding(padding: EdgeInsets.only(right: 8), child: Icon(Icons.lock_open_rounded, color: Colors.amber, size: 20)),
-                const Text('Confirm Restore', style: TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Backup Details:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 8),
-                Text('• ${preview.transactionCount} Transactions'),
-                Text('• ${preview.accountCount} Accounts'),
-                Text('• ${preview.categoryCount} Categories'),
-                Text('• ${preview.budgetCount} Budgets'),
-                Text('• ${preview.debtCount} Debts'),
-                Text('• ${preview.goalCount} Goals'),
-                Text('• ${preview.subscriptionCount} Subscriptions'),
-                const SizedBox(height: 8),
-                Text(
-                  'Created on: ${DateFormat('MMM d, yyyy • hh:mm a').format(preview.exportDate)}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  '⚠️ Warning: Restoring will overwrite all current local data with this backup.',
-                  style: TextStyle(fontSize: 12, color: AppColors.expense, fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.expense, foregroundColor: Colors.white),
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Replace & Restore'),
-              ),
-            ],
-          );
-        },
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => _RestoreConfirmSheet(
+          preview: preview,
+          isEncrypted: password != null,
+        ),
       );
 
       if (confirmed == true) {
@@ -617,35 +731,78 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
 
-                  if (_localBackups.isEmpty)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-                      ),
-                      child: Column(
+                  // Filter Chips
+                  if (_localBackups.isNotEmpty) ...[
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
                         children: [
-                          Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey.withValues(alpha: 0.5)),
-                          const SizedBox(height: 10),
-                          const Text(
-                            'No backups in this folder yet',
-                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                          ChoiceChip(
+                            label: Text('All (${_localBackups.length})'),
+                            selected: _backupFilter == 'all',
+                            onSelected: (_) => setState(() => _backupFilter = 'all'),
                           ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Tap "Create Backup" above to generate a snapshot.',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          const SizedBox(width: 8),
+                          ChoiceChip(
+                            avatar: const Icon(Icons.fingerprint_rounded, size: 14),
+                            label: Text('Manual (${_localBackups.where((b) => !b.isAuto).length})'),
+                            selected: _backupFilter == 'manual',
+                            selectedColor: AppColors.income.withValues(alpha: 0.2),
+                            onSelected: (_) => setState(() => _backupFilter = 'manual'),
+                          ),
+                          const SizedBox(width: 8),
+                          ChoiceChip(
+                            avatar: const Icon(Icons.schedule_rounded, size: 14),
+                            label: Text('Automatic (${_localBackups.where((b) => b.isAuto).length})'),
+                            selected: _backupFilter == 'auto',
+                            selectedColor: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                            onSelected: (_) => setState(() => _backupFilter = 'auto'),
                           ),
                         ],
                       ),
-                    )
-                  else
-                    Material(
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+
+                  () {
+                    final displayedBackups = _backupFilter == 'all'
+                        ? _localBackups
+                        : (_backupFilter == 'auto'
+                            ? _localBackups.where((b) => b.isAuto).toList()
+                            : _localBackups.where((b) => !b.isAuto).toList());
+
+                    if (displayedBackups.isEmpty) {
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey.withValues(alpha: 0.5)),
+                            const SizedBox(height: 10),
+                            Text(
+                              _localBackups.isEmpty ? 'No backups in this folder yet' : 'No backups matching this filter',
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _localBackups.isEmpty
+                                  ? 'Tap "Create Backup" above to generate a snapshot.'
+                                  : 'Switch category tab or create a new backup.',
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return Material(
                       color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
                       clipBehavior: Clip.antiAlias,
                       shape: RoundedRectangleBorder(
@@ -655,10 +812,10 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                       child: ListView.separated(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _localBackups.length,
+                        itemCount: displayedBackups.length,
                         separatorBuilder: (context, index) => const Divider(height: 1),
                         itemBuilder: (context, index) {
-                          final backup = _localBackups[index];
+                          final backup = displayedBackups[index];
                           return ListTile(
                             onTap: () => _confirmAndRestore(backup.path),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -667,12 +824,18 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                               decoration: BoxDecoration(
                                 color: backup.isEncrypted
                                     ? Colors.amber.withValues(alpha: 0.15)
-                                    : AppColors.primary.withValues(alpha: 0.15),
+                                    : (backup.isAuto
+                                        ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+                                        : AppColors.primary.withValues(alpha: 0.15)),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Icon(
-                                backup.isEncrypted ? Icons.lock_outline_rounded : Icons.description_outlined,
-                                color: backup.isEncrypted ? Colors.amber : AppColors.primary,
+                                backup.isEncrypted
+                                    ? Icons.lock_outline_rounded
+                                    : (backup.isAuto ? Icons.schedule_rounded : Icons.description_outlined),
+                                color: backup.isEncrypted
+                                    ? Colors.amber
+                                    : (backup.isAuto ? const Color(0xFF6366F1) : AppColors.primary),
                                 size: 22,
                               ),
                             ),
@@ -686,10 +849,28 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
+                                const SizedBox(width: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: backup.isAuto
+                                        ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+                                        : AppColors.income.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    backup.isAuto ? 'AUTO' : 'MANUAL',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: backup.isAuto ? const Color(0xFF6366F1) : AppColors.income,
+                                    ),
+                                  ),
+                                ),
                                 if (backup.isEncrypted) ...[
                                   const SizedBox(width: 4),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                                     decoration: BoxDecoration(
                                       color: Colors.amber.withValues(alpha: 0.15),
                                       borderRadius: BorderRadius.circular(6),
@@ -727,12 +908,24 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                           );
                         },
                       ),
-                    ),
+                    );
+                  }(),
 
                   const SizedBox(height: 24),
 
                   // ─── Automatic Backups & Retention ───
-                  const Text('Automatic Backups & Retention', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Automatic Backups & Retention', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                        icon: const Icon(Icons.play_circle_outline_rounded, size: 16, color: Color(0xFF6366F1)),
+                        label: const Text('Run Auto-Backup Now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF6366F1))),
+                        onPressed: _handleRunAutoBackupNow,
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 8),
 
                   Material(
@@ -745,16 +938,28 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                     child: Column(
                       children: [
                         ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                           leading: const Icon(Icons.schedule_rounded, color: AppColors.primary),
                           title: const Text('Auto-Backup Frequency', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                          subtitle: Text(
-                            _autoFrequency == 'daily'
-                                ? 'Daily'
-                                : _autoFrequency == 'weekly'
-                                    ? 'Weekly'
-                                    : 'Off (Manual only)',
-                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _autoFrequency == 'daily'
+                                    ? 'Runs every 24 hours on launch/resume'
+                                    : _autoFrequency == 'weekly'
+                                        ? 'Runs every 7 days on launch/resume'
+                                        : 'Off (Manual backups only)',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _lastAutoBackupTime != null
+                                    ? 'Last run: ${DateFormat('MMM d, yyyy • hh:mm a').format(_lastAutoBackupTime!)}'
+                                    : 'Last run: Never executed yet',
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.primary),
+                              ),
+                            ],
                           ),
                           trailing: DropdownButtonHideUnderline(
                             child: DropdownButton<String>(
@@ -776,10 +981,10 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                         ),
                         const Divider(height: 1),
                         ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                           leading: const Icon(Icons.auto_delete_outlined, color: AppColors.warning),
                           title: const Text('Max Backups to Keep', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                          subtitle: const Text('Auto-prunes oldest backups when limit is reached', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          subtitle: const Text('Only auto-backups are pruned. Manual backups are never deleted automatically.', style: TextStyle(fontSize: 12, color: Colors.grey)),
                           trailing: DropdownButtonHideUnderline(
                             child: DropdownButton<int>(
                               value: _maxBackups,
@@ -837,6 +1042,299 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                 ],
               ),
             ),
+    );
+  }
+}
+
+class _PasswordPromptSheet extends StatefulWidget {
+  final String title;
+  final String description;
+  final bool isNew;
+
+  const _PasswordPromptSheet({
+    required this.title,
+    required this.description,
+    this.isNew = false,
+  });
+
+  @override
+  State<_PasswordPromptSheet> createState() => _PasswordPromptSheetState();
+}
+
+class _PasswordPromptSheetState extends State<_PasswordPromptSheet> {
+  final _controller = TextEditingController();
+  bool _obscureText = true;
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final text = _controller.text;
+    if (text.trim().isEmpty) {
+      setState(() => _errorText = 'Password cannot be empty');
+      return;
+    }
+    Navigator.pop(context, text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final viewInsets = MediaQuery.of(context).viewInsets;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 12,
+        bottom: viewInsets.bottom + 24,
+      ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.lock_outline_rounded, color: Colors.amber, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                widget.description,
+                style: const TextStyle(fontSize: 13, color: Colors.grey, height: 1.4),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: _controller,
+                obscureText: _obscureText,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: widget.isNew ? 'Set Backup Password' : 'Enter Password',
+                  prefixIcon: const Icon(Icons.password_rounded),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscureText ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                    onPressed: () => setState(() => _obscureText = !_obscureText),
+                  ),
+                  errorText: _errorText,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  filled: true,
+                  fillColor: isDark ? AppColors.darkBg : AppColors.lightBg,
+                ),
+                onSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: widget.isNew ? AppColors.primary : Colors.amber.shade700,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: _submit,
+                child: Text(
+                  widget.isNew ? 'Encrypt & Save' : 'Unlock',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RestoreConfirmSheet extends StatelessWidget {
+  final BackupPreview preview;
+  final bool isEncrypted;
+
+  const _RestoreConfirmSheet({
+    required this.preview,
+    required this.isEncrypted,
+  });
+
+  Widget _buildStatPill(BuildContext context, IconData icon, String label, int count, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            '$count $label',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: (isEncrypted ? Colors.amber : AppColors.primary).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      isEncrypted ? Icons.lock_open_rounded : Icons.settings_backup_restore_rounded,
+                      color: isEncrypted ? Colors.amber : AppColors.primary,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Confirm Restore',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(context, false),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Created on ${DateFormat('MMM d, yyyy • hh:mm a').format(preview.exportDate)}',
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              const Text('Backup Contains:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildStatPill(context, Icons.receipt_long_rounded, 'Transactions', preview.transactionCount, AppColors.primary),
+                  _buildStatPill(context, Icons.account_balance_wallet_rounded, 'Accounts', preview.accountCount, Colors.indigo),
+                  _buildStatPill(context, Icons.category_rounded, 'Categories', preview.categoryCount, Colors.teal),
+                  _buildStatPill(context, Icons.pie_chart_rounded, 'Budgets', preview.budgetCount, Colors.orange),
+                  _buildStatPill(context, Icons.handshake_rounded, 'Debts', preview.debtCount, Colors.purple),
+                  _buildStatPill(context, Icons.savings_rounded, 'Goals', preview.goalCount, Colors.pink),
+                  _buildStatPill(context, Icons.calendar_month_rounded, 'Subscriptions', preview.subscriptionCount, Colors.cyan),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.expense.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.expense.withValues(alpha: 0.3)),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: AppColors.expense, size: 22),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Restoring will overwrite all current local data with this backup archive.',
+                        style: TextStyle(fontSize: 13, color: AppColors.expense, fontWeight: FontWeight.w600, height: 1.3),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.expense,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Replace & Restore', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

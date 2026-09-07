@@ -97,18 +97,31 @@ void main() {
       ),
     );
 
-    // Partial settlement $40
-    await debtRepo.recordSettlement('debt_1', 40.0);
+    // Partial settlement $40 with date and notes
+    final repayDate1 = DateTime(2026, 2, 1);
+    await debtRepo.recordSettlement('debt_1', 40.0, date: repayDate1, notes: 'First installment');
 
     final debt = await (db.select(db.debts)..where((t) => t.id.equals('debt_1'))).getSingle();
     expect(debt.settledAmount, 40.0);
     expect(debt.isSettled, isFalse);
 
+    final repayments1 = await debtRepo.watchRepayments('debt_1').first;
+    expect(repayments1.length, 1);
+    expect(repayments1.first.amount, 40.0);
+    expect(repayments1.first.notes, 'First installment');
+    expect(repayments1.first.date, repayDate1);
+
     // Complete settlement remaining $60
-    await debtRepo.recordSettlement('debt_1', 60.0);
+    final repayDate2 = DateTime(2026, 2, 15);
+    await debtRepo.recordSettlement('debt_1', 60.0, date: repayDate2, notes: 'Cleared remaining');
     final settledDebt = await (db.select(db.debts)..where((t) => t.id.equals('debt_1'))).getSingle();
     expect(settledDebt.settledAmount, 100.0);
     expect(settledDebt.isSettled, isTrue);
+
+    final repayments2 = await debtRepo.watchRepayments('debt_1').first;
+    expect(repayments2.length, 2);
+    expect(repayments2[0].amount, 60.0);
+    expect(repayments2[0].notes, 'Cleared remaining');
   });
 
   test('Creates and tracks monthly category budget', () async {

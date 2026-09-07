@@ -64,155 +64,17 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> with Single
   }
 
   void _showAddEditCategoryDialog({Category? categoryToEdit, required String type}) {
-    final nameController = TextEditingController(text: categoryToEdit?.name ?? '');
-    String selectedIcon = categoryToEdit?.icon ?? (_availableIcons.first);
-    int selectedColor = categoryToEdit?.color ?? (_availableColors.first);
-
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text(
-                categoryToEdit == null ? 'Add Category' : 'Edit Category',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Category Name',
-                        hintText: 'e.g. Groceries, Freelance',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('Select Icon', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _availableIcons.map((iconName) {
-                        final isSelected = selectedIcon == iconName;
-                        return InkWell(
-                          onTap: () => setDialogState(() => selectedIcon = iconName),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? AppColors.primary.withValues(alpha: 0.2)
-                                  : Colors.grey.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isSelected ? AppColors.primary : Colors.transparent,
-                                width: 2,
-                              ),
-                            ),
-                            child: Icon(
-                              IconHelper.getIcon(iconName),
-                              size: 22,
-                              color: isSelected ? AppColors.primary : null,
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('Select Color', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _availableColors.map((colorVal) {
-                        final isSelected = selectedColor == colorVal;
-                        return InkWell(
-                          onTap: () => setDialogState(() => selectedColor = colorVal),
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: Color(colorVal),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isSelected ? Colors.white : Colors.transparent,
-                                width: 2.5,
-                              ),
-                              boxShadow: isSelected
-                                  ? [
-                                      BoxShadow(
-                                        color: Color(colorVal).withValues(alpha: 0.5),
-                                        blurRadius: 6,
-                                        spreadRadius: 1,
-                                      )
-                                    ]
-                                  : null,
-                            ),
-                            child: isSelected
-                                ? const Icon(Icons.check, size: 16, color: Colors.white)
-                                : null,
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () async {
-                    final name = nameController.text.trim();
-                    if (name.isEmpty) return;
-
-                    final repo = ref.read(categoryRepositoryProvider);
-
-                    if (categoryToEdit == null) {
-                      await repo.createCategory(
-                        CategoriesCompanion.insert(
-                          id: const Uuid().v4(),
-                          name: name,
-                          type: type,
-                          icon: drift.Value(selectedIcon),
-                          color: drift.Value(selectedColor),
-                          isDefault: const drift.Value(false),
-                        ),
-                      );
-                    } else {
-                      await repo.updateCategory(
-                        CategoriesCompanion(
-                          id: drift.Value(categoryToEdit.id),
-                          name: drift.Value(name),
-                          type: drift.Value(categoryToEdit.type),
-                          icon: drift.Value(selectedIcon),
-                          color: drift.Value(selectedColor),
-                          isDefault: drift.Value(categoryToEdit.isDefault),
-                        ),
-                      );
-                    }
-
-                    if (context.mounted) Navigator.pop(context);
-                  },
-                  child: Text(categoryToEdit == null ? 'Create' : 'Save Changes'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _AddEditCategorySheet(
+        categoryToEdit: categoryToEdit,
+        type: type,
+        availableIcons: _availableIcons,
+        availableColors: _availableColors,
+      ),
     );
   }
 
@@ -435,6 +297,239 @@ class _CategoryListView extends ConsumerWidget {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (err, _) => Center(child: Text('Error: $err')),
+    );
+  }
+}
+
+class _AddEditCategorySheet extends ConsumerStatefulWidget {
+  final Category? categoryToEdit;
+  final String type;
+  final List<String> availableIcons;
+  final List<int> availableColors;
+
+  const _AddEditCategorySheet({
+    this.categoryToEdit,
+    required this.type,
+    required this.availableIcons,
+    required this.availableColors,
+  });
+
+  @override
+  ConsumerState<_AddEditCategorySheet> createState() => _AddEditCategorySheetState();
+}
+
+class _AddEditCategorySheetState extends ConsumerState<_AddEditCategorySheet> {
+  late final TextEditingController _nameController;
+  late String _selectedIcon;
+  late int _selectedColor;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.categoryToEdit?.name ?? '');
+    _selectedIcon = widget.categoryToEdit?.icon ?? widget.availableIcons.first;
+    _selectedColor = widget.categoryToEdit?.color ?? widget.availableColors.first;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isEditing = widget.categoryToEdit != null;
+
+    return SafeArea(
+      top: false,
+      bottom: true,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    isEditing ? 'Edit Category' : 'Add Category',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: _nameController,
+                      decoration: InputDecoration(
+                        labelText: 'Category Name',
+                        hintText: 'e.g. Groceries, Freelance',
+                        prefixIcon: const Icon(Icons.label_outline_rounded, size: 20),
+                        filled: true,
+                        fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Select Icon', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: widget.availableIcons.map((iconName) {
+                        final isSelected = _selectedIcon == iconName;
+                        return InkWell(
+                          onTap: () => setState(() => _selectedIcon = iconName),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.primary.withValues(alpha: 0.2)
+                                  : (isDark ? AppColors.darkSurfaceVariant : Colors.grey.withValues(alpha: 0.1)),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected ? AppColors.primary : Colors.transparent,
+                                width: 2,
+                              ),
+                            ),
+                            child: Icon(
+                              IconHelper.getIcon(iconName),
+                              size: 22,
+                              color: isSelected ? AppColors.primary : null,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Select Color', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: widget.availableColors.map((colorVal) {
+                        final isSelected = _selectedColor == colorVal;
+                        return InkWell(
+                          onTap: () => setState(() => _selectedColor = colorVal),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: Color(colorVal),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isSelected ? Colors.white : Colors.transparent,
+                                width: 2.5,
+                              ),
+                              boxShadow: isSelected
+                                  ? [
+                                      BoxShadow(
+                                        color: Color(colorVal).withValues(alpha: 0.5),
+                                        blurRadius: 6,
+                                        spreadRadius: 1,
+                                      )
+                                    ]
+                                  : null,
+                            ),
+                            child: isSelected
+                                ? const Icon(Icons.check, size: 16, color: Colors.white)
+                                : null,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final name = _nameController.text.trim();
+                          if (name.isEmpty) return;
+
+                          final repo = ref.read(categoryRepositoryProvider);
+
+                          if (widget.categoryToEdit == null) {
+                            const uuid = Uuid();
+                            await repo.createCategory(
+                              CategoriesCompanion.insert(
+                                id: uuid.v4(),
+                                name: name,
+                                type: widget.type,
+                                icon: drift.Value(_selectedIcon),
+                                color: drift.Value(_selectedColor),
+                              ),
+                            );
+                          } else {
+                            await repo.updateCategory(
+                              CategoriesCompanion(
+                                id: drift.Value(widget.categoryToEdit!.id),
+                                name: drift.Value(name),
+                                type: drift.Value(widget.type),
+                                icon: drift.Value(_selectedIcon),
+                                color: drift.Value(_selectedColor),
+                                isDefault: drift.Value(widget.categoryToEdit!.isDefault),
+                              ),
+                            );
+                          }
+
+                          if (context.mounted) Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          isEditing ? 'Save Changes' : 'Create Category',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

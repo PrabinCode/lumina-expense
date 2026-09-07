@@ -10,6 +10,7 @@ class QuickActionsBar extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) => AddTransactionSheet(initialType: initialType),
     );

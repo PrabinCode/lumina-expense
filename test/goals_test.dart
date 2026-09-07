@@ -123,4 +123,39 @@ void main() {
     goals = await repository.watchGoals().first;
     expect(goals.isEmpty, true);
   });
+
+  test('Depositing and withdrawing records goal transactions history with notes and dates', () async {
+    const goalId = 'goal-history';
+    await repository.createGoal(
+      GoalsCompanion.insert(
+        id: goalId,
+        name: 'Car Fund',
+        targetAmount: 5000.0,
+      ),
+    );
+
+    final depositDate = DateTime(2026, 3, 15);
+    await repository.depositToGoal(goalId, 1200.0, date: depositDate, notes: 'Bonus deposit');
+
+    final withdrawDate = DateTime(2026, 3, 20);
+    await repository.withdrawFromGoal(goalId, 200.0, date: withdrawDate, notes: 'Oil change expense');
+
+    final history = await repository.watchGoalTransactions(goalId).first;
+    expect(history.length, 2);
+    expect(history[0].type, 'withdraw');
+    expect(history[0].amount, 200.0);
+    expect(history[0].notes, 'Oil change expense');
+    expect(history[0].date, withdrawDate);
+
+    expect(history[1].type, 'deposit');
+    expect(history[1].amount, 1200.0);
+    expect(history[1].notes, 'Bonus deposit');
+    expect(history[1].date, depositDate);
+
+    // Test delete goal transaction
+    await repository.deleteGoalTransaction(history[0].id);
+    final historyAfterDelete = await repository.watchGoalTransactions(goalId).first;
+    expect(historyAfterDelete.length, 1);
+    expect(historyAfterDelete.first.type, 'deposit');
+  });
 }

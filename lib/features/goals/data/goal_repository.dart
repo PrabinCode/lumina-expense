@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
 
@@ -33,6 +34,10 @@ class GoalRepository {
     return query.watch();
   }
 
+  Future<Goal?> getGoalById(String id) {
+    return (_db.select(_db.goals)..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
+  }
+
   Future<void> createGoal(GoalsCompanion goal) {
     return _db.into(_db.goals).insert(goal);
   }
@@ -63,36 +68,111 @@ class GoalRepository {
         );
   }
 
-
-
-  Future<void> depositToGoal(String id, double amount) async {
-    final existing = await (_db.select(_db.goals)..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
-    if (existing == null) return;
-
-    final newCurrent = existing.currentAmount + amount;
-    final isCompleted = newCurrent >= existing.targetAmount;
-
-    await (_db.update(_db.goals)..where((tbl) => tbl.id.equals(id))).write(
-      GoalsCompanion(
-        currentAmount: Value(newCurrent),
-        isCompleted: Value(isCompleted),
-      ),
-    );
+  Stream<List<GoalTransaction>> watchGoalTransactions(String goalId) {
+    final query = _db.select(_db.goalTransactions)
+      ..where((tbl) => tbl.goalId.equals(goalId))
+      ..orderBy([(tbl) => OrderingTerm(expression: tbl.date, mode: OrderingMode.desc)]);
+    return query.watch();
   }
 
-  Future<void> withdrawFromGoal(String id, double amount) async {
-    final existing = await (_db.select(_db.goals)..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
-    if (existing == null) return;
+  Future<List<GoalTransaction>> getGoalTransactions(String goalId) {
+    final query = _db.select(_db.goalTransactions)
+      ..where((tbl) => tbl.goalId.equals(goalId))
+      ..orderBy([(tbl) => OrderingTerm(expression: tbl.date, mode: OrderingMode.desc)]);
+    return query.get();
+  }
 
-    final newCurrent = (existing.currentAmount - amount).clamp(0.0, double.infinity);
-    final isCompleted = newCurrent >= existing.targetAmount;
+  Future<void> depositToGoal(
+    String id,
+    double amount, {
+    DateTime? date,
+    String? notes,
+  }) async {
+    await _db.transaction(() async {
+      final existing = await (_db.select(_db.goals)..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
+      if (existing == null) return;
 
-    await (_db.update(_db.goals)..where((tbl) => tbl.id.equals(id))).write(
-      GoalsCompanion(
-        currentAmount: Value(newCurrent),
-        isCompleted: Value(isCompleted),
-      ),
-    );
+      final newCurrent = existing.currentAmount + amount;
+      final isCompleted = newCurrent >= existing.targetAmount;
+
+      await (_db.update(_db.goals)..where((tbl) => tbl.id.equals(id))).write(
+        GoalsCompanion(
+          currentAmount: Value(newCurrent),
+          isCompleted: Value(isCompleted),
+        ),
+      );
+
+      const uuid = Uuid();
+      await _db.into(_db.goalTransactions).insert(
+        GoalTransactionsCompanion.insert(
+          id: uuid.v4(),
+          goalId: id,
+          type: 'deposit',
+          amount: amount,
+          date: Value(date ?? DateTime.now()),
+          notes: Value(notes),
+        ),
+      );
+    });
+  }
+
+  Future<void> withdrawFromGoal(
+    String id,
+    double amount, {
+    DateTime? date,
+    String? notes,
+  }) async {
+    await _db.transaction(() async {
+      final existing = await (_db.select(_db.goals)..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
+      if (existing == null) return;
+
+      final newCurrent = (existing.currentAmount - amount).clamp(0.0, double.infinity);
+      final isCompleted = newCurrent >= existing.targetAmount;
+
+      await (_db.update(_db.goals)..where((tbl) => tbl.id.equals(id))).write(
+        GoalsCompanion(
+          currentAmount: Value(newCurrent),
+          isCompleted: Value(isCompleted),
+        ),
+      );
+
+      const uuid = Uuid();
+      await _db.into(_db.goalTransactions).insert(
+        GoalTransactionsCompanion.insert(
+          id: uuid.v4(),
+          goalId: id,
+          type: 'withdraw',
+          amount: amount,
+          date: Value(date ?? DateTime.now()),
+          notes: Value(notes),
+        ),
+      );
+    });
+  }
+
+  Future<void> deleteGoalTransaction(String transactionId) async {
+    await _db.transaction(() async {
+      final tx = await (_db.select(_db.goalTransactions)..where((tbl) => tbl.id.equals(transactionId))).getSingleOrNull();
+      if (tx == null) return;
+
+      final goal = await (_db.select(_db.goals)..where((tbl) => tbl.id.equals(tx.goalId))).getSingleOrNull();
+      if (goal != null) {
+        double newCurrent;
+        if (tx.type == 'deposit') {
+          newCurrent = (goal.currentAmount - tx.amount).clamp(0.0, double.infinity);
+        } else {
+          newCurrent = goal.currentAmount + tx.amount;
+        }
+        await (_db.update(_db.goals)..where((tbl) => tbl.id.equals(goal.id))).write(
+          GoalsCompanion(
+            currentAmount: Value(newCurrent),
+            isCompleted: Value(newCurrent >= goal.targetAmount),
+          ),
+        );
+      }
+
+      await (_db.delete(_db.goalTransactions)..where((tbl) => tbl.id.equals(transactionId))).go();
+    });
   }
 
   Stream<GoalsSummary> watchGoalsSummary() {
@@ -126,6 +206,10 @@ final goalRepositoryProvider = Provider<GoalRepository>((ref) {
 
 final goalsStreamProvider = StreamProvider.family<List<Goal>, bool?>((ref, isCompleted) {
   return ref.watch(goalRepositoryProvider).watchGoals(isCompleted: isCompleted);
+});
+
+final goalTransactionsStreamProvider = StreamProvider.family<List<GoalTransaction>, String>((ref, goalId) {
+  return ref.watch(goalRepositoryProvider).watchGoalTransactions(goalId);
 });
 
 final goalsSummaryStreamProvider = StreamProvider<GoalsSummary>((ref) {

@@ -14,133 +14,12 @@ class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
 
   void _showAddEditAccountDialog(BuildContext context, WidgetRef ref, {Account? accountToEdit}) {
-    final nameController = TextEditingController(text: accountToEdit?.name ?? '');
-    final balanceController = TextEditingController(
-      text: accountToEdit != null ? accountToEdit.initialBalance.toStringAsFixed(2) : '0.00',
-    );
-    String type = accountToEdit?.type ?? 'bank';
-    String currency = accountToEdit?.currency ?? ref.read(currencyProvider).code;
-    String icon = accountToEdit?.icon ?? 'account_balance';
-    int color = accountToEdit?.color ?? 0xFF2196F3;
-
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: Text(
-                accountToEdit == null ? 'Add Account / Wallet' : 'Edit Account',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Account Name',
-                        hintText: 'e.g. Chase Bank, Cash Wallet',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: type,
-                      decoration: const InputDecoration(labelText: 'Account Type', border: OutlineInputBorder()),
-                      items: const [
-                        DropdownMenuItem(value: 'cash', child: Text('Cash Wallet')),
-                        DropdownMenuItem(value: 'bank', child: Text('Bank Account')),
-                        DropdownMenuItem(value: 'creditCard', child: Text('Credit Card')),
-                        DropdownMenuItem(value: 'savings', child: Text('Savings / Investment')),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() {
-                            type = val;
-                            if (val == 'cash') {
-                              icon = 'payments';
-                              color = 0xFF4CAF50;
-                            } else if (val == 'bank') {
-                              icon = 'account_balance';
-                              color = 0xFF2196F3;
-                            } else if (val == 'creditCard') {
-                              icon = 'credit_card';
-                              color = 0xFF9C27B0;
-                            } else {
-                              icon = 'savings';
-                              color = 0xFFFF9800;
-                            }
-                          });
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: balanceController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        labelText: accountToEdit == null ? 'Initial Starting Balance' : 'Base Initial Balance',
-                        prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () async {
-                    final name = nameController.text.trim();
-                    final balance = double.tryParse(balanceController.text.trim()) ?? 0.0;
-                    if (name.isEmpty) return;
-
-                    final repo = ref.read(accountRepositoryProvider);
-
-                    if (accountToEdit == null) {
-                      const uuid = Uuid();
-                      await repo.createAccount(
-                        AccountsCompanion.insert(
-                          id: uuid.v4(),
-                          name: name,
-                          type: type,
-                          initialBalance: drift.Value(balance),
-                          currency: drift.Value(currency),
-                          icon: drift.Value(icon),
-                          color: drift.Value(color),
-                        ),
-                      );
-                    } else {
-                      await repo.updateAccount(
-                        AccountsCompanion(
-                          id: drift.Value(accountToEdit.id),
-                          name: drift.Value(name),
-                          type: drift.Value(type),
-                          initialBalance: drift.Value(balance),
-                          currency: drift.Value(currency),
-                          icon: drift.Value(icon),
-                          color: drift.Value(color),
-                          isArchived: drift.Value(accountToEdit.isArchived),
-                          createdAt: drift.Value(accountToEdit.createdAt),
-                        ),
-                      );
-                    }
-
-                    if (context.mounted) Navigator.pop(context);
-                  },
-                  child: Text(accountToEdit == null ? 'Save Account' : 'Update Account'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _AddEditAccountSheet(accountToEdit: accountToEdit),
     );
   }
 
@@ -338,6 +217,226 @@ class AccountsScreen extends ConsumerWidget {
               error: (err, _) => Text('Error loading accounts: $err'),
             ),
             const SizedBox(height: 80),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AddEditAccountSheet extends ConsumerStatefulWidget {
+  final Account? accountToEdit;
+  const _AddEditAccountSheet({this.accountToEdit});
+
+  @override
+  ConsumerState<_AddEditAccountSheet> createState() => _AddEditAccountSheetState();
+}
+
+class _AddEditAccountSheetState extends ConsumerState<_AddEditAccountSheet> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _balanceController;
+  late String _type;
+  late String _currency;
+  late String _icon;
+  late int _color;
+
+  @override
+  void initState() {
+    super.initState();
+    final edit = widget.accountToEdit;
+    _nameController = TextEditingController(text: edit?.name ?? '');
+    _balanceController = TextEditingController(
+      text: edit != null ? edit.initialBalance.toStringAsFixed(2) : '0.00',
+    );
+    _type = edit?.type ?? 'bank';
+    _currency = edit?.currency ?? ref.read(currencyProvider).code;
+    _icon = edit?.icon ?? 'account_balance';
+    _color = edit?.color ?? 0xFF2196F3;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _balanceController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isEditing = widget.accountToEdit != null;
+
+    return SafeArea(
+      top: false,
+      bottom: true,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    isEditing ? 'Edit Account' : 'Add Account / Wallet',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: _nameController,
+                      decoration: InputDecoration(
+                        labelText: 'Account Name',
+                        hintText: 'e.g. Chase Bank, Cash Wallet',
+                        prefixIcon: const Icon(Icons.account_balance_wallet_outlined, size: 20),
+                        filled: true,
+                        fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      initialValue: _type,
+                      decoration: InputDecoration(
+                        labelText: 'Account Type',
+                        prefixIcon: const Icon(Icons.category_outlined, size: 20),
+                        filled: true,
+                        fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'cash', child: Text('Cash Wallet')),
+                        DropdownMenuItem(value: 'bank', child: Text('Bank Account')),
+                        DropdownMenuItem(value: 'creditCard', child: Text('Credit Card')),
+                        DropdownMenuItem(value: 'savings', child: Text('Savings / Investment')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() {
+                            _type = val;
+                            if (val == 'cash') {
+                              _icon = 'payments';
+                              _color = 0xFF4CAF50;
+                            } else if (val == 'bank') {
+                              _icon = 'account_balance';
+                              _color = 0xFF2196F3;
+                            } else if (val == 'creditCard') {
+                              _icon = 'credit_card';
+                              _color = 0xFF9C27B0;
+                            } else {
+                              _icon = 'savings';
+                              _color = 0xFFFF9800;
+                            }
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: _balanceController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: isEditing ? 'Base Initial Balance' : 'Initial Starting Balance',
+                        prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
+                        prefixIcon: const Icon(Icons.payments_outlined, size: 20),
+                        filled: true,
+                        fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final name = _nameController.text.trim();
+                          final balance = double.tryParse(_balanceController.text.trim()) ?? 0.0;
+                          if (name.isEmpty) return;
+
+                          final repo = ref.read(accountRepositoryProvider);
+
+                          if (widget.accountToEdit == null) {
+                            const uuid = Uuid();
+                            await repo.createAccount(
+                              AccountsCompanion.insert(
+                                id: uuid.v4(),
+                                name: name,
+                                type: _type,
+                                initialBalance: drift.Value(balance),
+                                currency: drift.Value(_currency),
+                                icon: drift.Value(_icon),
+                                color: drift.Value(_color),
+                              ),
+                            );
+                          } else {
+                            await repo.updateAccount(
+                              AccountsCompanion(
+                                id: drift.Value(widget.accountToEdit!.id),
+                                name: drift.Value(name),
+                                type: drift.Value(_type),
+                                initialBalance: drift.Value(balance),
+                                currency: drift.Value(_currency),
+                                icon: drift.Value(_icon),
+                                color: drift.Value(_color),
+                                isArchived: drift.Value(widget.accountToEdit!.isArchived),
+                                createdAt: drift.Value(widget.accountToEdit!.createdAt),
+                              ),
+                            );
+                          }
+
+                          if (context.mounted) Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          isEditing ? 'Update Account' : 'Save Account',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),

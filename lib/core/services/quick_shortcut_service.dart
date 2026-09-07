@@ -37,6 +37,7 @@ class QuickShortcutService {
       showModalBottomSheet(
         context: navContext,
         isScrollControlled: true,
+        useSafeArea: true,
         backgroundColor: Colors.transparent,
         builder: (_) => const AddTransactionSheet(initialType: 'expense'),
       );
@@ -44,6 +45,7 @@ class QuickShortcutService {
       showModalBottomSheet(
         context: navContext,
         isScrollControlled: true,
+        useSafeArea: true,
         backgroundColor: Colors.transparent,
         builder: (_) => const AddTransactionSheet(initialType: 'income'),
       );

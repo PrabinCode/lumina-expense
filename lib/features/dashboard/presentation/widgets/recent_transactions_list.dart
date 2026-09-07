@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/providers/privacy_mask_provider.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -12,6 +13,7 @@ import '../../../../core/widgets/bouncy.dart';
 import '../../../../core/widgets/sonner_toast.dart';
 import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../../transactions/data/transaction_repository.dart';
+import '../../../transactions/presentation/screens/add_transaction_sheet.dart';
 import '../../../transactions/presentation/widgets/power_search_bar.dart';
 import '../../../transactions/presentation/widgets/transaction_batch_action_bar.dart';
 
@@ -61,6 +63,39 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
     });
   }
 
+  Future<void> _deleteTransactionWithUndo(BuildContext context, Transaction tx) async {
+    final repo = ref.read(transactionRepositoryProvider);
+    final snapshot = await repo.getTransactionSnapshot(tx.id);
+    await repo.deleteTransaction(tx.id);
+    if (context.mounted) {
+      Navigator.pop(context);
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.clearSnackBars();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Deleted "${tx.title}"'),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'UNDO',
+            textColor: AppColors.income,
+            onPressed: () async {
+              if (snapshot != null) {
+                await repo.restoreTransactionSnapshot(snapshot);
+                messenger.clearSnackBars();
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text('✓ Restored "${tx.title}"'),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+          ),
+        ),
+      );
+    }
+  }
+
   void _showTransactionDetails(BuildContext context, TransactionWithDetails item) {
     final tx = item.transaction;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -68,6 +103,8 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -103,41 +140,33 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
                           : (tx.type == 'expense' ? AppColors.expense : AppColors.transfer),
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded, color: AppColors.expense),
-                    tooltip: 'Delete transaction',
-                    onPressed: () async {
-                      final repo = ref.read(transactionRepositoryProvider);
-                      final snapshot = await repo.getTransactionSnapshot(tx.id);
-                      await repo.deleteTransaction(tx.id);
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                        final messenger = ScaffoldMessenger.of(context);
-                        messenger.clearSnackBars();
-                        messenger.showSnackBar(
-                          SnackBar(
-                            content: Text('Deleted "${tx.title}"'),
-                            duration: const Duration(seconds: 5),
-                            action: SnackBarAction(
-                              label: 'UNDO',
-                              textColor: AppColors.income,
-                              onPressed: () async {
-                                if (snapshot != null) {
-                                  await repo.restoreTransactionSnapshot(snapshot);
-                                  messenger.clearSnackBars();
-                                  messenger.showSnackBar(
-                                    SnackBar(
-                                      content: Text('✓ Restored "${tx.title}"'),
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
-                                }
-                              },
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined, color: AppColors.primary),
+                        tooltip: 'Edit transaction',
+                        onPressed: () {
+                          Navigator.pop(context);
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            useSafeArea: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (_) => AddTransactionSheet(
+                              initialType: tx.type,
+                              transactionToEdit: tx,
+                              initialSplits: item.splits,
                             ),
-                          ),
-                        );
-                      }
-                    },
+                          );
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, color: AppColors.expense),
+                        tooltip: 'Delete transaction',
+                        onPressed: () => _deleteTransactionWithUndo(context, tx),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -197,7 +226,54 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
                   ),
                 ),
               ],
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                      label: const Text('Delete'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.expense,
+                        side: const BorderSide(color: AppColors.expense),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => _deleteTransactionWithUndo(context, tx),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.edit_rounded, size: 18),
+                      label: const Text('Edit Transaction'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          useSafeArea: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) => AddTransactionSheet(
+                            initialType: tx.type,
+                            transactionToEdit: tx,
+                            initialSplits: item.splits,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 8),
             ],
           ),
         );
@@ -352,31 +428,73 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
 
                     return Dismissible(
                       key: Key(tx.id),
-                      direction: _isSelectionMode ? DismissDirection.none : DismissDirection.endToStart,
+                      direction: _isSelectionMode ? DismissDirection.none : DismissDirection.horizontal,
                       background: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        alignment: Alignment.centerLeft,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.edit_rounded, color: Colors.white),
+                            SizedBox(width: 8),
+                            Text('Edit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                      secondaryBackground: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         alignment: Alignment.centerRight,
                         decoration: BoxDecoration(
                           color: AppColors.expense,
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: const Icon(Icons.delete_outline, color: Colors.white),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Delete', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            SizedBox(width: 8),
+                            Icon(Icons.delete_outline, color: Colors.white),
+                          ],
+                        ),
                       ),
-                      onDismissed: (_) async {
-                        final recycleRepo = ref.read(recycleBinRepositoryProvider);
-                        final recycleId = await recycleRepo.moveTransactionToRecycleBin(tx.id);
+                      confirmDismiss: (direction) async {
+                        if (direction == DismissDirection.startToEnd) {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            useSafeArea: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (_) => AddTransactionSheet(
+                              initialType: tx.type,
+                              transactionToEdit: tx,
+                              initialSplits: item.splits,
+                            ),
+                          );
+                          return false;
+                        }
+                        return true;
+                      },
+                      onDismissed: (direction) async {
+                        if (direction == DismissDirection.endToStart) {
+                          final recycleRepo = ref.read(recycleBinRepositoryProvider);
+                          final recycleId = await recycleRepo.moveTransactionToRecycleBin(tx.id);
 
-                        Sonner.success(
-                          'Moved "${tx.title}" to Recycle Bin',
-                          description: 'Tap undo to restore or find it in Settings > Recycle Bin',
-                          undoLabel: 'UNDO',
-                          onUndo: () async {
-                            if (recycleId.isNotEmpty) {
-                              await recycleRepo.restoreItem(recycleId);
-                              Sonner.success('Restored "${tx.title}"');
-                            }
-                          },
-                        );
+                          Sonner.success(
+                            'Moved "${tx.title}" to Recycle Bin',
+                            description: 'Tap undo to restore or find it in Settings > Recycle Bin',
+                            undoLabel: 'UNDO',
+                            onUndo: () async {
+                              if (recycleId.isNotEmpty) {
+                                await recycleRepo.restoreItem(recycleId);
+                                Sonner.success('Restored "${tx.title}"');
+                              }
+                            },
+                          );
+                        }
                       },
 
                       child: Bouncy(

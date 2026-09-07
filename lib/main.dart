@@ -13,7 +13,9 @@ import 'features/app_lock/presentation/widgets/privacy_shield_widget.dart';
 import 'features/budgets/presentation/screens/budgets_screen.dart';
 import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'features/onboarding/presentation/screens/onboarding_screen.dart';
+import 'core/services/app_update_service.dart';
 import 'core/services/quick_shortcut_service.dart';
+import 'features/backup/services/backup_restore_service.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
 import 'features/transactions/presentation/screens/add_transaction_sheet.dart';
 
@@ -97,6 +99,24 @@ class _AppLockGateState extends ConsumerState<_AppLockGate> with WidgetsBindingO
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkOnboardingStatus();
+    _checkAutoBackup();
+    _checkAppUpdateSilently();
+  }
+
+  void _checkAutoBackup() {
+    Future.microtask(() async {
+      try {
+        await ref.read(backupRestoreServiceProvider).checkAndPerformAutoBackup();
+      } catch (_) {}
+    });
+  }
+
+  void _checkAppUpdateSilently() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(appUpdateServiceProvider).checkSilentlyOnStartup(context);
+      }
+    });
   }
 
   Future<void> _checkOnboardingStatus() async {
@@ -138,6 +158,7 @@ class _AppLockGateState extends ConsumerState<_AppLockGate> with WidgetsBindingO
       case AppLifecycleState.resumed:
         setState(() => _isInBackground = false);
         lockService.onAppResumed();
+        _checkAutoBackup();
         break;
       case AppLifecycleState.detached:
         break;
@@ -203,6 +224,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) => const AddTransactionSheet(initialType: 'expense'),
     );

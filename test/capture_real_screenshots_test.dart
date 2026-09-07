@@ -16,12 +16,20 @@ import 'package:lumina_expense/features/debts/presentation/screens/debts_screen.
 import 'package:lumina_expense/features/goals/presentation/screens/goals_screen.dart';
 import 'package:lumina_expense/features/settings/presentation/screens/settings_screen.dart';
 import 'package:lumina_expense/main.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('Capture authentic app screenshots for web showcase and Play Store', (WidgetTester tester) async {
+    PackageInfo.setMockInitialValues(
+      appName: 'Lumina Expense',
+      packageName: 'com.prabincode.luminaexpense',
+      version: '1.7.0',
+      buildNumber: '8',
+      buildSignature: '',
+    );
     SharedPreferences.setMockInitialValues({
       'is_onboarded': true,
       'theme_mode': 'dark',

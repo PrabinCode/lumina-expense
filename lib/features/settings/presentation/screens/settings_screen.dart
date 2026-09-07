@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/providers/currency_provider.dart';
+import '../../../../core/services/app_review_service.dart';
+import '../../../../core/services/app_update_service.dart';
+import '../../../../core/services/app_version_service.dart';
+import '../widgets/whats_new_sheet.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../accounts/presentation/screens/accounts_screen.dart';
@@ -32,6 +37,8 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _userName = '';
   String _userEmail = '';
+  String _appVersion = AppVersionInfo.currentVersion;
+  String _buildNumber = AppVersionInfo.currentBuildNumber;
 
   @override
   void initState() {
@@ -41,57 +48,128 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _loadUserProfile() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _userName = prefs.getString('user_profile_name') ?? '';
-      _userEmail = prefs.getString('user_profile_email') ?? '';
-    });
+    PackageInfo? packageInfo;
+    try {
+      packageInfo = await PackageInfo.fromPlatform();
+    } catch (e) {
+      debugPrint('PackageInfo error: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        _userName = prefs.getString('user_profile_name') ?? '';
+        _userEmail = prefs.getString('user_profile_email') ?? '';
+        if (packageInfo != null && packageInfo.version.isNotEmpty) {
+          _appVersion = packageInfo.version;
+          _buildNumber = packageInfo.buildNumber.isNotEmpty ? packageInfo.buildNumber : AppVersionInfo.currentBuildNumber;
+        }
+      });
+    }
   }
 
   Future<void> _editUserProfile() async {
     final nameController = TextEditingController(text: _userName);
     final emailController = TextEditingController(text: _userEmail);
 
-    final saved = await showDialog<bool>(
+    final saved = await showModalBottomSheet<bool>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('Edit User Profile', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Your Name',
-                  hintText: 'e.g. Alex Smith',
-                  prefixIcon: Icon(Icons.person_outline_rounded),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Email Address',
-                  hintText: 'e.g. alex@example.com',
-                  prefixIcon: Icon(Icons.mail_outline_rounded),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Save'),
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return SafeArea(
+          top: false,
+          bottom: true,
+          child: Container(
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             ),
-          ],
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Edit User Profile',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.pop(context, false),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: nameController,
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          labelText: 'Your Name',
+                          hintText: 'e.g. Alex Smith',
+                          prefixIcon: const Icon(Icons.person_outline_rounded),
+                          filled: true,
+                          fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: InputDecoration(
+                          labelText: 'Email Address',
+                          hintText: 'e.g. alex@example.com',
+                          prefixIcon: const Icon(Icons.mail_outline_rounded),
+                          filled: true,
+                          fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 0,
+                          ),
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text('Save Profile', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
@@ -117,42 +195,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   void _showUpdateCheckDialog(BuildContext context) {
-    showDialog(
+    ref.read(appUpdateServiceProvider).checkForUpdate(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.system_update_alt_rounded, color: AppColors.primary),
-              SizedBox(width: 10),
-              Text('App Update', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ],
-          ),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Current Installed Version: v1.2.0', style: TextStyle(fontWeight: FontWeight.w600)),
-              SizedBox(height: 8),
-              Text(
-                'Lumina Expense is 100% offline-first. You can check the latest releases, change logs, and download updated APKs on GitHub.',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
-              onPressed: () {
-                Navigator.pop(context);
-                _launchUrl('https://github.com/PrabinCode/lumina-expense/releases');
-              },
-              child: const Text('View Releases on GitHub'),
-            ),
-          ],
-        );
-      },
+      showFeedbackIfUpToDate: true,
     );
   }
 
@@ -640,6 +685,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             ],
                           ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        ActionChip(
+                          avatar: const Icon(Icons.star_rounded, size: 14, color: Color(0xFFF59E0B)),
+                          label: const Text('Rate App', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                          onPressed: () => ref.read(appReviewServiceProvider).openStoreReview(),
+                        ),
+                        ActionChip(
+                          avatar: const Icon(Icons.auto_awesome_rounded, size: 13, color: AppColors.primary),
+                          label: const Text("What's New", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                          onPressed: () => WhatsNewSheet.show(context, appVersion: _appVersion),
+                        ),
                         ActionChip(
                           avatar: const Icon(Icons.open_in_new_rounded, size: 13, color: AppColors.primary),
                           label: const Text('Website', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
@@ -697,9 +759,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       spacing: 12,
                       runSpacing: 10,
                       children: [
-                        const Text(
-                          'v1.2.0 (Build 3)',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey),
+                        Text(
+                          'v$_appVersion (Build $_buildNumber)',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey),
                         ),
                         InkWell(
                           onTap: () => FeedbackReportSheet.show(context),
@@ -737,7 +799,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               Icon(Icons.system_update_alt_rounded, size: 14, color: AppColors.primary),
                               SizedBox(width: 4),
                               Text(
-                                'Updates',
+                                'Check Updates',
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary),
                               ),
                             ],

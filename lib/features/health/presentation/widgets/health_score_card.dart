@@ -17,121 +17,203 @@ class HealthScoreCard extends ConsumerWidget {
     final textColor = isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
     final secondaryTextColor = isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
 
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const FinancialHealthScreen(),
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: surfaceColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const FinancialHealthScreen(),
             ),
-          ],
-        ),
-        child: healthState.when(
-          data: (report) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                HealthScoreGauge(
-                  score: report.overallScore,
-                  grade: report.grade,
-                  gradeColor: report.gradeColor,
-                  size: 80,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Financial Health',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: textColor,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (report.insights.isNotEmpty) ...[
-                        _buildMiniInsight(report.insights.first, secondaryTextColor),
-                        if (report.insights.length > 1) ...[
-                          const SizedBox(height: 4),
-                          _buildMiniInsight(report.insights[1], secondaryTextColor),
-                        ],
-                      ] else
-                        Text(
-                          'Looking good!',
-                          style: TextStyle(color: secondaryTextColor, fontSize: 13),
-                        ),
-                    ],
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: healthState.when(
+            data: (report) {
+              final tier = report.tier;
+              final topTask = report.actionRoadmap.isNotEmpty ? report.actionRoadmap.first : null;
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  HealthScoreGauge(
+                    score: report.overallScore,
+                    tier: tier,
+                    grade: report.grade,
+                    gradeColor: report.gradeColor,
+                    size: 80,
+                    showTierBadge: false,
+                    showSubtext: false,
                   ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Financial Health',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: textColor,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: tier.color.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: tier.color.withValues(alpha: 0.25),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                '${tier.icon} ${tier.label}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: tier.color,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          tier.headline,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: secondaryTextColor,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (topTask != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: topTask.impactColor.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  topTask.icon,
+                                  size: 13,
+                                  color: topTask.impactColor,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    topTask.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: topTask.impactColor,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  topTask.impact,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: topTask.impactColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (report.insights.isNotEmpty)
+                          Row(
+                            children: [
+                              Icon(
+                                report.insights.first.icon,
+                                size: 13,
+                                color: AppColors.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  report.insights.first.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: secondaryTextColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        else
+                          Text(
+                            'Tap to explore scoring breakdown',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: secondaryTextColor,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: secondaryTextColor.withValues(alpha: 0.7),
+                    size: 20,
+                  ),
+                ],
+              );
+            },
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20.0),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
                 ),
-                Icon(
-                  Icons.chevron_right,
-                  color: secondaryTextColor,
-                ),
-              ],
-            );
-          },
-          loading: () => const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24.0),
-              child: CircularProgressIndicator(),
+              ),
             ),
-          ),
-          error: (err, stack) => Center(
-            child: Text(
-              'Failed to load health score',
-              style: TextStyle(color: AppColors.expense),
+            error: (err, stack) => Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12.0),
+                child: Text(
+                  'Tap to recalculate health score',
+                  style: TextStyle(color: AppColors.expense, fontSize: 13),
+                ),
+              ),
             ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildMiniInsight(HealthInsight insight, Color textColor) {
-    Color iconColor;
-    switch (insight.priority) {
-      case InsightPriority.high:
-        iconColor = AppColors.expense;
-        break;
-      case InsightPriority.medium:
-        iconColor = AppColors.warning;
-        break;
-      case InsightPriority.low:
-        iconColor = AppColors.primary;
-        break;
-    }
-
-    return Row(
-      children: [
-        Icon(insight.icon, size: 14, color: iconColor),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            insight.title,
-            style: TextStyle(
-              fontSize: 13,
-              color: textColor,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
     );
   }
 }

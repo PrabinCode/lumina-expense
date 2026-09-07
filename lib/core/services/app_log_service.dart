@@ -1,6 +1,7 @@
 import 'dart:collection';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 enum LogLevel { info, warning, error }
@@ -36,6 +37,8 @@ class AppLogService {
   static final AppLogService instance = AppLogService._internal();
 
   static const int _maxLogs = 100;
+  static String appVersion = '1.7.0';
+  static String buildNumber = '8';
   final Queue<LogEntry> _logs = Queue<LogEntry>();
 
   static void initialize() {
@@ -60,7 +63,17 @@ class AppLogService {
       return true;
     };
 
-    instance.logInfo('Lumina Expense initialized (v1.2.0+3)');
+    try {
+      PackageInfo.fromPlatform().then((info) {
+        if (info.version.isNotEmpty) appVersion = info.version;
+        if (info.buildNumber.isNotEmpty) buildNumber = info.buildNumber;
+        instance.logInfo('Lumina Expense initialized (v$appVersion+$buildNumber)');
+      }).catchError((_) {
+        instance.logInfo('Lumina Expense initialized (v$appVersion+$buildNumber)');
+      });
+    } catch (_) {
+      instance.logInfo('Lumina Expense initialized (v$appVersion+$buildNumber)');
+    }
   }
 
   void logInfo(String message) {
@@ -114,11 +127,11 @@ class AppLogService {
     buffer.writeln('========================================');
     buffer.writeln();
     buffer.writeln('--- APP & DEVICE INFO ---');
-    buffer.writeln('App Version: v1.2.0 (Build 3)');
+    buffer.writeln('App Version: v$appVersion (Build $buildNumber)');
     buffer.writeln('Package: com.prabincode.luminaexpense');
     buffer.writeln('OS: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}');
     buffer.writeln('Locale: ${Platform.localeName}');
-    buffer.writeln('Database Schema: v4');
+    buffer.writeln('Database Schema: v5');
     buffer.writeln();
 
     buffer.writeln('--- ANONYMIZED STATS (Privacy Compliant) ---');

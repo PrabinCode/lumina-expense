@@ -49,6 +49,7 @@ class BackupFileInfo {
   final int sizeBytes;
   final DateTime modifiedAt;
   final bool isEncrypted;
+  final bool isAuto;
 
   BackupFileInfo({
     required this.path,
@@ -56,6 +57,7 @@ class BackupFileInfo {
     required this.sizeBytes,
     required this.modifiedAt,
     this.isEncrypted = false,
+    this.isAuto = false,
   });
 
   String get formattedSize {
@@ -74,6 +76,7 @@ class BackupRestoreService {
   static const _keyBackupDir = 'backup_storage_location';
   static const _keyAutoFrequency = 'backup_auto_frequency';
   static const _keyMaxFiles = 'backup_max_files';
+  static const _keyLastAutoBackup = 'backup_last_auto_timestamp';
 
   final AppDatabase _db;
 
@@ -162,6 +165,7 @@ class BackupRestoreService {
             ? entity.uri.pathSegments.last
             : entity.path.split(Platform.pathSeparator).last;
         final isEncrypted = entity.path.endsWith('.enc') || entity.path.endsWith('.lumina.enc');
+        final isAuto = name.toLowerCase().contains('_auto_') || name.toLowerCase().startsWith('lumina_backup_auto');
 
         backups.add(BackupFileInfo(
           path: entity.path,
@@ -169,6 +173,7 @@ class BackupRestoreService {
           sizeBytes: stat.size,
           modifiedAt: stat.modified,
           isEncrypted: isEncrypted,
+          isAuto: isAuto,
         ));
       }
     }
@@ -209,6 +214,49 @@ class BackupRestoreService {
     await prefs.setInt(_keyMaxFiles, count);
   }
 
+  /// Get the timestamp of the last recorded automatic backup
+  Future<DateTime?> getLastAutoBackupTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    final str = prefs.getString(_keyLastAutoBackup);
+    if (str == null || str.isEmpty) return null;
+    return DateTime.tryParse(str);
+  }
+
+  /// Record the timestamp of an automatic backup
+  Future<void> recordAutoBackupTimestamp([DateTime? time]) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyLastAutoBackup, (time ?? DateTime.now()).toIso8601String());
+  }
+
+  /// Check schedule and perform automatic backup if due.
+  Future<bool> checkAndPerformAutoBackup() async {
+    final freq = await getAutoBackupFrequency();
+    if (freq == 'off') return false;
+
+    final lastTime = await getLastAutoBackupTime();
+    final now = DateTime.now();
+
+    bool shouldRun = false;
+    if (lastTime == null) {
+      shouldRun = true;
+    } else {
+      final diff = now.difference(lastTime);
+      if (freq == 'daily' && diff.inHours >= 24) {
+        shouldRun = true;
+      } else if (freq == 'weekly' && diff.inDays >= 7) {
+        shouldRun = true;
+      }
+    }
+
+    if (shouldRun) {
+      await createBackup(isAuto: true);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_keyLastAutoBackup, now.toIso8601String());
+      return true;
+    }
+    return false;
+  }
+
   /// Generate Backup JSON payload
   Future<Map<String, dynamic>> _buildBackupPayload() async {
     final accounts = await _db.select(_db.accounts).get();
@@ -216,12 +264,14 @@ class BackupRestoreService {
     final transactions = await _db.select(_db.transactions).get();
     final budgets = await _db.select(_db.budgets).get();
     final debts = await _db.select(_db.debts).get();
+    final debtRepayments = await _db.select(_db.debtRepayments).get();
     final goals = await _db.select(_db.goals).get();
+    final goalTransactions = await _db.select(_db.goalTransactions).get();
     final splits = await _db.select(_db.transactionSplits).get();
     final subscriptions = await _db.select(_db.recurringTransactions).get();
 
     return {
-      'version': 4,
+      'version': 5,
       'appName': 'LuminaExpense',
       'exportDate': DateTime.now().toIso8601String(),
       'data': {
@@ -292,10 +342,21 @@ class BackupRestoreService {
                   'settledAmount': d.settledAmount,
                   'type': d.type,
                   'accountId': d.accountId,
+                  'date': d.date.toIso8601String(),
                   'dueDate': d.dueDate?.toIso8601String(),
                   'isSettled': d.isSettled,
                   'notes': d.notes,
                   'createdAt': d.createdAt.toIso8601String(),
+                })
+            .toList(),
+        'debtRepayments': debtRepayments
+            .map((r) => {
+                  'id': r.id,
+                  'debtId': r.debtId,
+                  'amount': r.amount,
+                  'date': r.date.toIso8601String(),
+                  'notes': r.notes,
+                  'createdAt': r.createdAt.toIso8601String(),
                 })
             .toList(),
         'goals': goals
@@ -310,6 +371,17 @@ class BackupRestoreService {
                   'notes': g.notes,
                   'isCompleted': g.isCompleted,
                   'createdAt': g.createdAt.toIso8601String(),
+                })
+            .toList(),
+        'goalTransactions': goalTransactions
+            .map((t) => {
+                  'id': t.id,
+                  'goalId': t.goalId,
+                  'type': t.type,
+                  'amount': t.amount,
+                  'date': t.date.toIso8601String(),
+                  'notes': t.notes,
+                  'createdAt': t.createdAt.toIso8601String(),
                 })
             .toList(),
         'recurringTransactions': subscriptions
@@ -344,8 +416,8 @@ class BackupRestoreService {
     };
   }
 
-  /// Create backup in configured storage location and auto-prune oldest
-  Future<String> createBackup({String? targetDir, String? password}) async {
+  /// Create backup in configured storage location and auto-prune oldest auto-backups
+  Future<String> createBackup({String? targetDir, String? password, bool isAuto = false}) async {
     final payload = await _buildBackupPayload();
     final jsonString = const JsonEncoder.withIndent('  ').convert(payload);
 
@@ -357,7 +429,8 @@ class BackupRestoreService {
 
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final isEnc = password != null && password.trim().isNotEmpty;
-    final fileName = isEnc ? 'lumina_backup_$timestamp.lumina.enc' : 'lumina_backup_$timestamp.json';
+    final prefix = isAuto ? 'lumina_backup_auto' : 'lumina_backup_manual';
+    final fileName = isEnc ? '${prefix}_$timestamp.lumina.enc' : '${prefix}_$timestamp.json';
     final filePath = '${dir.path}/$fileName';
 
     final file = File(filePath);
@@ -368,12 +441,13 @@ class BackupRestoreService {
       await file.writeAsString(jsonString);
     }
 
-    // Auto-prune old backups if limit is reached
+    // Auto-prune old AUTO backups ONLY if limit is reached (manual backups are preserved)
     final maxFiles = await getMaxBackupFiles();
     final existing = await listLocalBackups();
-    if (existing.length > maxFiles) {
-      for (int i = maxFiles; i < existing.length; i++) {
-        await deleteBackup(existing[i].path);
+    final autoBackups = existing.where((b) => b.isAuto).toList();
+    if (autoBackups.length > maxFiles) {
+      for (int i = maxFiles; i < autoBackups.length; i++) {
+        await deleteBackup(autoBackups[i].path);
       }
     }
 
@@ -594,8 +668,10 @@ class BackupRestoreService {
       await _db.delete(_db.recurringTransactions).go();
       await _db.delete(_db.transactionSplits).go();
       await _db.delete(_db.transactions).go();
+      await _db.delete(_db.debtRepayments).go();
       await _db.delete(_db.debts).go();
       await _db.delete(_db.budgets).go();
+      await _db.delete(_db.goalTransactions).go();
       await _db.delete(_db.goals).go();
       await _db.delete(_db.categories).go();
       await _db.delete(_db.accounts).go();
@@ -695,10 +771,26 @@ class BackupRestoreService {
                 settledAmount: Value((d['settledAmount'] as num?)?.toDouble() ?? 0.0),
                 type: d['type'],
                 accountId: Value(d['accountId']),
+                date: Value(d['date'] != null ? (DateTime.tryParse(d['date']) ?? DateTime.now()) : DateTime.now()),
                 dueDate: Value(d['dueDate'] != null ? DateTime.tryParse(d['dueDate']) : null),
                 isSettled: Value(d['isSettled'] ?? false),
                 notes: Value(d['notes']),
                 createdAt: Value(DateTime.tryParse(d['createdAt'] ?? '') ?? DateTime.now()),
+              ),
+            );
+      }
+
+      // 7b. Insert Debt Repayments
+      final debtRepaymentsList = (data['debtRepayments'] as List? ?? []);
+      for (final r in debtRepaymentsList) {
+        await _db.into(_db.debtRepayments).insert(
+              DebtRepaymentsCompanion.insert(
+                id: r['id'],
+                debtId: r['debtId'],
+                amount: (r['amount'] as num).toDouble(),
+                date: Value(DateTime.tryParse(r['date'] ?? '') ?? DateTime.now()),
+                notes: Value(r['notes']),
+                createdAt: Value(DateTime.tryParse(r['createdAt'] ?? '') ?? DateTime.now()),
               ),
             );
       }
@@ -718,6 +810,22 @@ class BackupRestoreService {
                 notes: Value(g['notes']),
                 isCompleted: Value(g['isCompleted'] ?? false),
                 createdAt: Value(DateTime.tryParse(g['createdAt'] ?? '') ?? DateTime.now()),
+              ),
+            );
+      }
+
+      // 8b. Insert Goal Transactions
+      final goalTransactionsList = (data['goalTransactions'] as List? ?? []);
+      for (final t in goalTransactionsList) {
+        await _db.into(_db.goalTransactions).insert(
+              GoalTransactionsCompanion.insert(
+                id: t['id'],
+                goalId: t['goalId'],
+                type: t['type'] ?? 'deposit',
+                amount: (t['amount'] as num).toDouble(),
+                date: Value(DateTime.tryParse(t['date'] ?? '') ?? DateTime.now()),
+                notes: Value(t['notes']),
+                createdAt: Value(DateTime.tryParse(t['createdAt'] ?? '') ?? DateTime.now()),
               ),
             );
       }
@@ -1043,9 +1151,10 @@ class BackupRestoreService {
       }
 
       // 7. Insert Realistic Financial Goals
+      final emergencyGoalId = uuid.v4();
       await _db.into(_db.goals).insert(
             GoalsCompanion.insert(
-              id: uuid.v4(),
+              id: emergencyGoalId,
               name: '🛡️ Emergency Reserve (6 Mo)',
               targetAmount: 10000.0,
               currentAmount: const Value(6850.0),
@@ -1056,9 +1165,31 @@ class BackupRestoreService {
             ),
           );
 
+      await _db.into(_db.goalTransactions).insert(
+            GoalTransactionsCompanion.insert(
+              id: uuid.v4(),
+              goalId: emergencyGoalId,
+              type: 'deposit',
+              amount: 5000.0,
+              date: Value(now.subtract(const Duration(days: 45))),
+              notes: const Value('Initial emergency fund transfer from old bank'),
+            ),
+          );
+      await _db.into(_db.goalTransactions).insert(
+            GoalTransactionsCompanion.insert(
+              id: uuid.v4(),
+              goalId: emergencyGoalId,
+              type: 'deposit',
+              amount: 1850.0,
+              date: Value(now.subtract(const Duration(days: 15))),
+              notes: const Value('Quarterly performance bonus deposit'),
+            ),
+          );
+
+      final macGoalId = uuid.v4();
       await _db.into(_db.goals).insert(
             GoalsCompanion.insert(
-              id: uuid.v4(),
+              id: macGoalId,
               name: '💻 MacBook Pro M3 Max',
               targetAmount: 2499.0,
               currentAmount: const Value(1800.0),
@@ -1066,6 +1197,27 @@ class BackupRestoreService {
               colorValue: const Value(0xFF3B82F6), // Blue
               targetDate: Value(now.add(const Duration(days: 60))),
               notes: const Value('Workstation upgrade for development & design'),
+            ),
+          );
+
+      await _db.into(_db.goalTransactions).insert(
+            GoalTransactionsCompanion.insert(
+              id: uuid.v4(),
+              goalId: macGoalId,
+              type: 'deposit',
+              amount: 1000.0,
+              date: Value(now.subtract(const Duration(days: 30))),
+              notes: const Value('Freelance UI project payout'),
+            ),
+          );
+      await _db.into(_db.goalTransactions).insert(
+            GoalTransactionsCompanion.insert(
+              id: uuid.v4(),
+              goalId: macGoalId,
+              type: 'deposit',
+              amount: 800.0,
+              date: Value(now.subtract(const Duration(days: 10))),
+              notes: const Value('Monthly tech fund allocation'),
             ),
           );
 
@@ -1096,15 +1248,27 @@ class BackupRestoreService {
           );
 
       // 8. Insert Realistic Debts & IOUs
+      final alexDebtId = uuid.v4();
       await _db.into(_db.debts).insert(
             DebtsCompanion.insert(
-              id: uuid.v4(),
+              id: alexDebtId,
               personName: 'Alex Morgan',
               amount: 120.0,
               settledAmount: const Value(40.0),
               type: 'lent',
+              date: Value(now.subtract(const Duration(days: 14))),
               notes: const Value('Concert VIP tickets front booking'),
               dueDate: Value(now.add(const Duration(days: 7))),
+            ),
+          );
+
+      await _db.into(_db.debtRepayments).insert(
+            DebtRepaymentsCompanion.insert(
+              id: uuid.v4(),
+              debtId: alexDebtId,
+              amount: 40.0,
+              date: Value(now.subtract(const Duration(days: 4))),
+              notes: const Value('First installment via Venmo'),
             ),
           );
 
@@ -1115,6 +1279,7 @@ class BackupRestoreService {
               amount: 65.0,
               settledAmount: const Value(0.0),
               type: 'lent',
+              date: Value(now.subtract(const Duration(days: 5))),
               notes: const Value('Team dinner bill coverage'),
               dueDate: Value(now.add(const Duration(days: 10))),
             ),
@@ -1127,20 +1292,34 @@ class BackupRestoreService {
               amount: 50.0,
               settledAmount: const Value(0.0),
               type: 'borrowed',
+              date: Value(now.subtract(const Duration(days: 2))),
               notes: const Value('Weekend road trip fuel share'),
               dueDate: Value(now.add(const Duration(days: 14))),
             ),
           );
 
+      final emmaDebtId = uuid.v4();
       await _db.into(_db.debts).insert(
             DebtsCompanion.insert(
-              id: uuid.v4(),
+              id: emmaDebtId,
               personName: 'Emma Davis',
               amount: 45.0,
               settledAmount: const Value(45.0),
+              isSettled: const Value(true),
               type: 'lent',
+              date: Value(now.subtract(const Duration(days: 20))),
               notes: const Value('Book club supplies - fully repaid ✓'),
               dueDate: Value(now.subtract(const Duration(days: 5))),
+            ),
+          );
+
+      await _db.into(_db.debtRepayments).insert(
+            DebtRepaymentsCompanion.insert(
+              id: uuid.v4(),
+              debtId: emmaDebtId,
+              amount: 45.0,
+              date: Value(now.subtract(const Duration(days: 5))),
+              notes: const Value('Cash settlement in full'),
             ),
           );
 

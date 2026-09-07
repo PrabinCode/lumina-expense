@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/currency_provider.dart';
+import '../../../../core/services/app_review_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
@@ -41,11 +42,13 @@ class AddTransactionSheet extends ConsumerStatefulWidget {
   final String initialType; // 'expense', 'income', 'transfer'
   /// When provided, the sheet opens in edit mode pre-filled with this transaction
   final Transaction? transactionToEdit;
+  final List<TransactionSplitWithCategory>? initialSplits;
 
   const AddTransactionSheet({
     super.key,
     this.initialType = 'expense',
     this.transactionToEdit,
+    this.initialSplits,
   });
 
   @override
@@ -83,6 +86,36 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
       _selectedAccountId = tx.accountId;
       _selectedToAccountId = tx.toAccountId;
       _selectedDate = tx.date;
+
+      if (tx.isSplit && tx.type == 'expense') {
+        _isSplitMode = true;
+        if (widget.initialSplits != null && widget.initialSplits!.isNotEmpty) {
+          for (final s in widget.initialSplits!) {
+            _splitItems.add(_SplitItemInput(
+              categoryId: s.split.categoryId,
+              initialAmount: s.split.amount,
+              initialNote: s.split.note ?? '',
+            ));
+          }
+        } else {
+          // Fetch splits asynchronously if not passed directly
+          Future.microtask(() async {
+            final splits = await ref.read(transactionRepositoryProvider).getSplitsForTransaction(tx.id);
+            if (mounted && splits.isNotEmpty) {
+              setState(() {
+                _splitItems.clear();
+                for (final s in splits) {
+                  _splitItems.add(_SplitItemInput(
+                    categoryId: s.split.categoryId,
+                    initialAmount: s.split.amount,
+                    initialNote: s.split.note ?? '',
+                  ));
+                }
+              });
+            }
+          });
+        }
+      }
     } else {
       _type = widget.initialType;
     }
@@ -277,9 +310,33 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
         toAccountId: drift.Value(_selectedToAccountId),
         date: drift.Value(_selectedDate),
         note: drift.Value(_noteController.text.trim().isEmpty ? null : _noteController.text.trim()),
+        tags: drift.Value(existing.tags),
+        receiptPath: drift.Value(existing.receiptPath),
         isSplit: drift.Value(_isSplitMode && _type == 'expense'),
+        createdAt: drift.Value(existing.createdAt),
       );
-      await ref.read(transactionRepositoryProvider).updateTransaction(companion);
+
+      if (_isSplitMode && _type == 'expense') {
+        const uuid = Uuid();
+        final splitsCompanions = _splitItems.map((item) {
+          return TransactionSplitsCompanion.insert(
+            id: uuid.v4(),
+            transactionId: existing.id,
+            categoryId: item.categoryId!,
+            amount: item.amount,
+            note: drift.Value(item.noteController.text.trim().isEmpty ? null : item.noteController.text.trim()),
+          );
+        }).toList();
+
+        await ref.read(transactionRepositoryProvider).updateTransactionWithSplits(companion, splitsCompanions);
+      } else {
+        if (existing.isSplit) {
+          await ref.read(transactionRepositoryProvider).updateTransactionWithSplits(companion, []);
+        } else {
+          await ref.read(transactionRepositoryProvider).updateTransaction(companion);
+        }
+      }
+
       if (mounted) {
         Navigator.pop(context);
         Sonner.success(
@@ -322,6 +379,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     } else {
       await ref.read(transactionRepositoryProvider).createTransaction(txCompanion);
     }
+    ref.read(appReviewServiceProvider).recordTransactionLogged();
 
     if (mounted) {
       Navigator.pop(context);
@@ -363,13 +421,17 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     final allocatedSum = _isSplitMode ? _getAllocatedSplitSum() : totalAmount;
     final remainingSplit = _isSplitMode ? totalAmount - allocatedSum : 0.0;
     final isSplitMatched = (remainingSplit.abs() <= 0.01);
+    final bottomNavPadding = MediaQuery.of(context).viewPadding.bottom;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.92,
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      ),
+    return SafeArea(
+      top: false,
+      bottom: true,
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.92,
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
       child: Column(
         children: [
           // Header handle
@@ -464,7 +526,14 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
 
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                12,
+                20,
+                MediaQuery.of(context).viewInsets.bottom > 0
+                    ? MediaQuery.of(context).viewInsets.bottom + 20
+                    : bottomNavPadding + 28,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -880,12 +949,14 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 16),
                 ],
               ),
             ),
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 }

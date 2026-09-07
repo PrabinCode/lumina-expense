@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
 
@@ -32,6 +33,10 @@ class DebtRepository {
     return query.watch();
   }
 
+  Future<Debt?> getDebtById(String id) {
+    return (_db.select(_db.debts)..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
+  }
+
   Future<void> createDebt(DebtsCompanion debt) {
     return _db.into(_db.debts).insert(debt);
   }
@@ -51,6 +56,8 @@ class DebtRepository {
             personName: debt.personName,
             amount: debt.amount,
             type: debt.type,
+            accountId: Value(debt.accountId),
+            date: Value(debt.date),
             settledAmount: Value(debt.settledAmount),
             dueDate: Value(debt.dueDate),
             notes: Value(debt.notes),
@@ -61,21 +68,71 @@ class DebtRepository {
         );
   }
 
+  Stream<List<DebtRepayment>> watchRepayments(String debtId) {
+    final query = _db.select(_db.debtRepayments)
+      ..where((tbl) => tbl.debtId.equals(debtId))
+      ..orderBy([(tbl) => OrderingTerm(expression: tbl.date, mode: OrderingMode.desc)]);
+    return query.watch();
+  }
 
+  Future<List<DebtRepayment>> getRepayments(String debtId) {
+    final query = _db.select(_db.debtRepayments)
+      ..where((tbl) => tbl.debtId.equals(debtId))
+      ..orderBy([(tbl) => OrderingTerm(expression: tbl.date, mode: OrderingMode.desc)]);
+    return query.get();
+  }
 
-  Future<void> recordSettlement(String id, double additionalSettledAmount) async {
-    final existing = await (_db.select(_db.debts)..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
-    if (existing == null) return;
+  Future<void> recordSettlement(
+    String id,
+    double additionalSettledAmount, {
+    DateTime? date,
+    String? notes,
+  }) async {
+    await _db.transaction(() async {
+      final existing = await (_db.select(_db.debts)..where((tbl) => tbl.id.equals(id))).getSingleOrNull();
+      if (existing == null) return;
 
-    final newSettled = existing.settledAmount + additionalSettledAmount;
-    final isFullySettled = newSettled >= existing.amount;
+      final newSettled = (existing.settledAmount + additionalSettledAmount).clamp(0.0, double.infinity);
+      final isFullySettled = newSettled >= existing.amount;
 
-    await (_db.update(_db.debts)..where((tbl) => tbl.id.equals(id))).write(
-      DebtsCompanion(
-        settledAmount: Value(newSettled),
-        isSettled: Value(isFullySettled),
-      ),
-    );
+      await (_db.update(_db.debts)..where((tbl) => tbl.id.equals(id))).write(
+        DebtsCompanion(
+          settledAmount: Value(newSettled),
+          isSettled: Value(isFullySettled),
+        ),
+      );
+
+      const uuid = Uuid();
+      await _db.into(_db.debtRepayments).insert(
+        DebtRepaymentsCompanion.insert(
+          id: uuid.v4(),
+          debtId: id,
+          amount: additionalSettledAmount,
+          date: Value(date ?? DateTime.now()),
+          notes: Value(notes),
+        ),
+      );
+    });
+  }
+
+  Future<void> deleteRepayment(String repaymentId) async {
+    await _db.transaction(() async {
+      final repayment = await (_db.select(_db.debtRepayments)..where((tbl) => tbl.id.equals(repaymentId))).getSingleOrNull();
+      if (repayment == null) return;
+
+      final debt = await (_db.select(_db.debts)..where((tbl) => tbl.id.equals(repayment.debtId))).getSingleOrNull();
+      if (debt != null) {
+        final newSettled = (debt.settledAmount - repayment.amount).clamp(0.0, double.infinity);
+        await (_db.update(_db.debts)..where((tbl) => tbl.id.equals(debt.id))).write(
+          DebtsCompanion(
+            settledAmount: Value(newSettled),
+            isSettled: Value(newSettled >= debt.amount),
+          ),
+        );
+      }
+
+      await (_db.delete(_db.debtRepayments)..where((tbl) => tbl.id.equals(repaymentId))).go();
+    });
   }
 
   Stream<DebtSummary> watchDebtSummary() {
@@ -110,6 +167,10 @@ final debtRepositoryProvider = Provider<DebtRepository>((ref) {
 
 final debtsStreamProvider = StreamProvider.family<List<Debt>, bool?>((ref, isSettled) {
   return ref.watch(debtRepositoryProvider).watchDebts(isSettled: isSettled);
+});
+
+final debtRepaymentsStreamProvider = StreamProvider.family<List<DebtRepayment>, String>((ref, debtId) {
+  return ref.watch(debtRepositoryProvider).watchRepayments(debtId);
 });
 
 final debtSummaryStreamProvider = StreamProvider<DebtSummary>((ref) {

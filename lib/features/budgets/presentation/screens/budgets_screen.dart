@@ -51,87 +51,12 @@ class _BudgetsScreenState extends ConsumerState<BudgetsScreen> {
   }
 
   void _showAddBudgetDialog(BuildContext context) {
-    final categoriesAsync = ref.read(categoriesStreamProvider('expense'));
-    final amountController = TextEditingController();
-    String? selectedCatId;
-
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('Create Monthly Budget', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  categoriesAsync.when(
-                    data: (categories) {
-                      return DropdownButtonFormField<String>(
-                        initialValue: selectedCatId,
-                        decoration: const InputDecoration(
-                          labelText: 'Category',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: categories.map((c) {
-                          return DropdownMenuItem(
-                            value: c.id,
-                            child: Row(
-                              children: [
-                                Icon(IconHelper.getIcon(c.icon), size: 18, color: Color(c.color)),
-                                const SizedBox(width: 8),
-                                Text(c.name),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (val) => setState(() => selectedCatId = val),
-                      );
-                    },
-                    loading: () => const CircularProgressIndicator(),
-                    error: (_, _) => const Text('Error loading categories'),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: amountController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText: 'Monthly Limit Amount',
-                      prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                ElevatedButton(
-                  onPressed: () async {
-                    final amount = double.tryParse(amountController.text.trim()) ?? 0.0;
-                    if (selectedCatId == null || amount <= 0) return;
-
-                    const uuid = Uuid();
-                    await ref.read(budgetRepositoryProvider).createBudget(
-                          BudgetsCompanion.insert(
-                            id: uuid.v4(),
-                            categoryId: selectedCatId!,
-                            amountLimit: amount,
-                          ),
-                        );
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('✓ Budget created (${CurrencyFormatter.format(amount)})')),
-                      );
-                    }
-                  },
-                  child: const Text('Save Budget'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const _CreateBudgetSheet(),
     );
   }
 
@@ -641,6 +566,167 @@ class _BudgetsScreenState extends ConsumerState<BudgetsScreen> {
               error: (err, _) => Text('Error: $err'),
             ),
             const SizedBox(height: 80),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CreateBudgetSheet extends ConsumerStatefulWidget {
+  const _CreateBudgetSheet();
+
+  @override
+  ConsumerState<_CreateBudgetSheet> createState() => _CreateBudgetSheetState();
+}
+
+class _CreateBudgetSheetState extends ConsumerState<_CreateBudgetSheet> {
+  final _amountController = TextEditingController();
+  String? _selectedCatId;
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final categoriesAsync = ref.watch(categoriesStreamProvider('expense'));
+
+    return SafeArea(
+      top: false,
+      bottom: true,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Create Monthly Budget',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    categoriesAsync.when(
+                      data: (categories) {
+                        return DropdownButtonFormField<String>(
+                          initialValue: _selectedCatId,
+                          decoration: InputDecoration(
+                            labelText: 'Category',
+                            prefixIcon: const Icon(Icons.category_rounded, size: 20),
+                            filled: true,
+                            fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                          ),
+                          items: categories.map((c) {
+                            return DropdownMenuItem(
+                              value: c.id,
+                              child: Row(
+                                children: [
+                                  Icon(IconHelper.getIcon(c.icon), size: 18, color: Color(c.color)),
+                                  const SizedBox(width: 8),
+                                  Text(c.name),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (val) => setState(() => _selectedCatId = val),
+                        );
+                      },
+                      loading: () => const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())),
+                      error: (_, _) => const Text('Error loading categories'),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _amountController,
+                      autofocus: true,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'Monthly Limit Amount',
+                        prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
+                        prefixIcon: const Icon(Icons.payments_outlined, size: 20),
+                        filled: true,
+                        fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
+                          if (_selectedCatId == null || amount <= 0) return;
+
+                          const uuid = Uuid();
+                          await ref.read(budgetRepositoryProvider).createBudget(
+                                BudgetsCompanion.insert(
+                                  id: uuid.v4(),
+                                  categoryId: _selectedCatId!,
+                                  amountLimit: amount,
+                                ),
+                              );
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            Sonner.success(
+                              'Budget created',
+                              description: CurrencyFormatter.format(amount),
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 0,
+                        ),
+                        child: const Text('Save Budget', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),

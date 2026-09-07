@@ -85,8 +85,22 @@ class Debts extends Table {
   RealColumn get settledAmount => real().withDefault(const Constant(0.0))();
   TextColumn get type => text()(); // 'lent' (they owe me) or 'borrowed' (I owe them)
   TextColumn get accountId => text().nullable().references(Accounts, #id)();
+  DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get dueDate => dateTime().nullable()();
   BoolColumn get isSettled => boolean().withDefault(const Constant(false))();
+  TextColumn get notes => text().nullable()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Repayments / Installments history for Debts & Loans (IOUs)
+class DebtRepayments extends Table {
+  TextColumn get id => text()();
+  TextColumn get debtId => text().references(Debts, #id, onDelete: KeyAction.cascade)();
+  RealColumn get amount => real()();
+  DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
@@ -105,6 +119,20 @@ class Goals extends Table {
   IntColumn get colorValue => integer().withDefault(const Constant(0xFF10B981))();
   TextColumn get notes => text().nullable()();
   BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Deposit and Withdrawal history for Savings Goals
+class GoalTransactions extends Table {
+  TextColumn get id => text()();
+  TextColumn get goalId => text().references(Goals, #id, onDelete: KeyAction.cascade)();
+  TextColumn get type => text()(); // 'deposit' or 'withdraw'
+  RealColumn get amount => real()();
+  DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
+  TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   @override

@@ -41,6 +41,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> with 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _AddEditSubscriptionModal(existing: existing),
     );
@@ -127,13 +128,13 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> with 
       appBar: AppBar(
         title: const Text('Subscriptions & Bills', style: TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddEditSubscriptionSheet(),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add Bill / Sub'),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_rounded),
+            tooltip: 'Add Bill / Sub',
+            onPressed: () => _showAddEditSubscriptionSheet(),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -268,6 +269,17 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> with 
                             textAlign: TextAlign.center,
                             style: TextStyle(fontSize: 13, color: Colors.grey),
                           ),
+                          const SizedBox(height: 20),
+                          ElevatedButton.icon(
+                            onPressed: () => _showAddEditSubscriptionSheet(),
+                            icon: const Icon(Icons.add_rounded, size: 18),
+                            label: const Text('Add Bill / Sub'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -303,7 +315,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> with 
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       itemCount: items.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
@@ -594,38 +606,55 @@ class _AddEditSubscriptionModalState extends ConsumerState<_AddEditSubscriptionM
       }
     });
 
-    return Container(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-        left: 20,
-        right: 20,
-        top: 20,
-      ),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SingleChildScrollView(
+    return SafeArea(
+      top: false,
+      bottom: true,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.9,
+        ),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              widget.existing != null ? 'Edit Subscription' : 'Add Recurring Bill / Sub',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    widget.existing != null ? 'Edit Subscription' : 'Add Recurring Bill / Sub',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
 
             // Title
             TextField(
@@ -800,7 +829,7 @@ class _AddEditSubscriptionModalState extends ConsumerState<_AddEditSubscriptionM
             // Submit Button
             SizedBox(
               width: double.infinity,
-              height: 50,
+              height: 52,
               child: ElevatedButton(
                 onPressed: _save,
                 style: ElevatedButton.styleFrom(
@@ -814,8 +843,13 @@ class _AddEditSubscriptionModalState extends ConsumerState<_AddEditSubscriptionM
                 ),
               ),
             ),
+            const SizedBox(height: 16),
           ],
         ),
+      ),
+    ),
+  ],
+),
       ),
     );
   }

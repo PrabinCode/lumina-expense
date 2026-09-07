@@ -168,6 +168,22 @@ class TransactionRepository {
     return _db.update(_db.transactions).replace(tx);
   }
 
+  /// Update an existing transaction and rewrite its splits atomically
+  Future<void> updateTransactionWithSplits(
+    TransactionsCompanion tx,
+    List<TransactionSplitsCompanion> splits,
+  ) async {
+    await _db.transaction(() async {
+      await _db.update(_db.transactions).replace(tx);
+      await (_db.delete(_db.transactionSplits)
+            ..where((tbl) => tbl.transactionId.equals(tx.id.value)))
+          .go();
+      for (final split in splits) {
+        await _db.into(_db.transactionSplits).insert(split);
+      }
+    });
+  }
+
   Future<int> deleteTransaction(String id) {
     return _db.transaction(() async {
       await (_db.delete(_db.transactionSplits)..where((tbl) => tbl.transactionId.equals(id))).go();
