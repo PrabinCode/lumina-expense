@@ -213,7 +213,7 @@ class _TactileKeypadButtonState extends State<_TactileKeypadButton>
 
     return Expanded(
       child: Padding(
-        padding: const EdgeInsets.all(4.5),
+        padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.5),
         child: Listener(
           onPointerDown: _onPointerDown,
           onPointerMove: _onPointerMove,
@@ -244,11 +244,11 @@ class _TactileKeypadButtonState extends State<_TactileKeypadButton>
                 return Transform.scale(
                   scale: scale,
                   child: Container(
-                    height: 52,
+                    height: 48,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: activeBg,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: activeBorderColor,
                         width: borderWidth,
@@ -286,7 +286,7 @@ class _TactileKeypadButtonState extends State<_TactileKeypadButton>
                         ? Text(
                             widget.text!,
                             style: TextStyle(
-                              fontSize: 23,
+                              fontSize: 22,
                               fontWeight: FontWeight.w600,
                               color: Color.lerp(
                                 textBaseColor,
@@ -298,7 +298,7 @@ class _TactileKeypadButtonState extends State<_TactileKeypadButton>
                           )
                         : Icon(
                             widget.icon,
-                            size: 21,
+                            size: 20,
                             color: Color.lerp(
                               textBaseColor,
                               accent,

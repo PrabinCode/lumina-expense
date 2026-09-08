@@ -50,20 +50,41 @@ class SlidingPillControl<T> extends StatelessWidget {
         const horizontalPadding = 4.0;
         final availableWidth = totalWidth - (horizontalPadding * 2);
         final itemWidth = availableWidth / count;
-
-        return Container(
-          height: height,
-          padding: const EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 4),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF161F30) : const Color(0xFFE2E8F0),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
-              width: 1,
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragUpdate: (details) {
+            final x = details.localPosition.dx - horizontalPadding;
+            final targetIndex = (x / itemWidth).floor().clamp(0, count - 1);
+            if (segments[targetIndex].value != selectedValue) {
+              HapticFeedback.selectionClick();
+              onValueChanged(segments[targetIndex].value);
+            }
+          },
+          onHorizontalDragEnd: (details) {
+            final velocity = details.primaryVelocity;
+            if (velocity != null) {
+              if (velocity < -150 && validIndex < count - 1) {
+                HapticFeedback.selectionClick();
+                onValueChanged(segments[validIndex + 1].value);
+              } else if (velocity > 150 && validIndex > 0) {
+                HapticFeedback.selectionClick();
+                onValueChanged(segments[validIndex - 1].value);
+              }
+            }
+          },
+          child: Container(
+            height: height,
+            padding: const EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 4),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF161F30) : const Color(0xFFE2E8F0),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
+                width: 1,
+              ),
             ),
-          ),
-          child: Stack(
-            children: [
+            child: Stack(
+              children: [
               // Gliding pill indicator
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 240),
@@ -134,8 +155,9 @@ class SlidingPillControl<T> extends StatelessWidget {
               ),
             ],
           ),
-        );
-      },
-    );
+        ),
+      );
+    },
+  );
   }
 }

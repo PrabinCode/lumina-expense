@@ -314,8 +314,9 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> with 
       );
     }
 
+    final bottomPadding = MediaQuery.of(context).padding.bottom + 48;
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding),
       itemCount: items.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {

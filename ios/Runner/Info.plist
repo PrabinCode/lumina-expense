@@ -8,6 +8,10 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Lumina Expense uses Face ID to protect your private financial records.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Lumina Expense needs camera access to scan receipts and bills.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Lumina Expense needs access to your photos to attach receipt images.</string>
 	<key>CFBundleDisplayName</key>
 	<string>Lumina Expense</string>
 	<key>CFBundleExecutable</key>

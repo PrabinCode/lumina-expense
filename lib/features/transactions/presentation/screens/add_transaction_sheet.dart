@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart' as drift;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -17,6 +18,7 @@ import '../../../accounts/data/account_repository.dart';
 import '../../../categories/data/category_repository.dart';
 import '../../data/transaction_repository.dart';
 import '../widgets/num_keypad.dart';
+import '../widgets/receipt_attachment_widget.dart';
 
 class _SplitItemInput {
   String? categoryId;
@@ -43,12 +45,14 @@ class AddTransactionSheet extends ConsumerStatefulWidget {
   /// When provided, the sheet opens in edit mode pre-filled with this transaction
   final Transaction? transactionToEdit;
   final List<TransactionSplitWithCategory>? initialSplits;
+  final bool autoOpenScanner;
 
   const AddTransactionSheet({
     super.key,
     this.initialType = 'expense',
     this.transactionToEdit,
     this.initialSplits,
+    this.autoOpenScanner = false,
   });
 
   @override
@@ -61,10 +65,14 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   String _amountStr = '0';
   final _titleController = TextEditingController();
   final _noteController = TextEditingController();
+  final _tagInputController = TextEditingController();
+  final List<String> _tags = [];
+  bool _isAddingTag = false;
   String? _selectedCategoryId;
   String? _selectedAccountId;
   String? _selectedToAccountId;
   DateTime _selectedDate = DateTime.now();
+  String? _receiptPath;
 
   // Split Transaction Support
   bool _isSplitMode = false;
@@ -86,6 +94,13 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
       _selectedAccountId = tx.accountId;
       _selectedToAccountId = tx.toAccountId;
       _selectedDate = tx.date;
+      _receiptPath = tx.receiptPath;
+
+      if (tx.tags != null && tx.tags!.trim().isNotEmpty) {
+        _tags.addAll(
+          tx.tags!.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty),
+        );
+      }
 
       if (tx.isSplit && tx.type == 'expense') {
         _isSplitMode = true;
@@ -125,10 +140,32 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   void dispose() {
     _titleController.dispose();
     _noteController.dispose();
+    _tagInputController.dispose();
     for (final item in _splitItems) {
       item.dispose();
     }
     super.dispose();
+  }
+
+  void _addTag(String raw) {
+    var cleaned = raw.trim();
+    if (cleaned.isEmpty) return;
+    if (!cleaned.startsWith('#')) {
+      cleaned = '#$cleaned';
+    }
+    cleaned = cleaned.replaceAll(RegExp(r'[^#a-zA-Z0-9_\-]'), '');
+    if (cleaned.length <= 1) return;
+    if (!_tags.contains(cleaned)) {
+      setState(() {
+        _tags.add(cleaned);
+      });
+    }
+  }
+
+  void _removeTag(String tag) {
+    setState(() {
+      _tags.remove(tag);
+    });
   }
 
   void _onKeypadPress(String val) {
@@ -216,6 +253,18 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     return total - _getAllocatedSplitSum();
   }
 
+  void _attemptAutoMatchCategory(String keyword, List<Category>? categories) {
+    if (categories == null || categories.isEmpty) return;
+    final lowerKeyword = keyword.toLowerCase();
+    for (final cat in categories) {
+      final lowerCat = cat.name.toLowerCase();
+      if (lowerCat.contains(lowerKeyword) || lowerKeyword.contains(lowerCat)) {
+        _selectedCategoryId = cat.id;
+        break;
+      }
+    }
+  }
+
   void _autoFillRemainingToLastItem() {
     if (_splitItems.isEmpty) return;
     final total = double.tryParse(_amountStr) ?? 0.0;
@@ -227,6 +276,48 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     setState(() {
       _splitItems.last.amountController.text = remaining.toStringAsFixed(2);
     });
+  }
+
+  void _changeType(String val) {
+    if (_type == val) return;
+    setState(() {
+      _type = val;
+      _selectedCategoryId = null;
+      if (_type != 'expense') {
+        _isSplitMode = false;
+      }
+    });
+  }
+
+  void _switchToNextType() {
+    const types = ['expense', 'income', 'transfer'];
+    final currentIndex = types.indexOf(_type);
+    if (currentIndex < types.length - 1) {
+      HapticFeedback.selectionClick();
+      _changeType(types[currentIndex + 1]);
+    }
+  }
+
+  void _switchToPreviousType() {
+    const types = ['expense', 'income', 'transfer'];
+    final currentIndex = types.indexOf(_type);
+    if (currentIndex > 0) {
+      HapticFeedback.selectionClick();
+      _changeType(types[currentIndex - 1]);
+    }
+  }
+
+  void _handleHorizontalSwipe(DragEndDetails details) {
+    final velocity = details.primaryVelocity;
+    if (velocity == null) return;
+    // Swipe left (negative velocity) -> Next tab (Expense -> Income -> Transfer)
+    if (velocity < -150) {
+      _switchToNextType();
+    }
+    // Swipe right (positive velocity) -> Previous tab (Transfer -> Income -> Expense)
+    else if (velocity > 150) {
+      _switchToPreviousType();
+    }
   }
 
   Future<void> _saveTransaction() async {
@@ -296,6 +387,20 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
         title = _type == 'expense' ? 'Expense' : 'Income';
       }
     }
+    if (title.length > 100) {
+      title = title.substring(0, 100);
+    }
+
+    // Extract tags from chips + auto-detect from note & title
+    final allTagsSet = <String>{..._tags};
+    final hashtagRegex = RegExp(r'#([a-zA-Z0-9_\-]+)');
+    for (final match in hashtagRegex.allMatches('${_noteController.text} ${_titleController.text}')) {
+      final tag = match.group(0);
+      if (tag != null && tag.length > 1) {
+        allTagsSet.add(tag);
+      }
+    }
+    final tagsString = allTagsSet.isNotEmpty ? allTagsSet.join(',') : null;
 
     if (_isEditMode) {
       // --- UPDATE existing transaction ---
@@ -310,8 +415,8 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
         toAccountId: drift.Value(_selectedToAccountId),
         date: drift.Value(_selectedDate),
         note: drift.Value(_noteController.text.trim().isEmpty ? null : _noteController.text.trim()),
-        tags: drift.Value(existing.tags),
-        receiptPath: drift.Value(existing.receiptPath),
+        tags: drift.Value(tagsString),
+        receiptPath: drift.Value(_receiptPath),
         isSplit: drift.Value(_isSplitMode && _type == 'expense'),
         createdAt: drift.Value(existing.createdAt),
       );
@@ -361,6 +466,8 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
       toAccountId: drift.Value(_selectedToAccountId),
       date: drift.Value(_selectedDate),
       note: drift.Value(_noteController.text.trim().isEmpty ? null : _noteController.text.trim()),
+      tags: drift.Value(tagsString),
+      receiptPath: drift.Value(_receiptPath),
       isSplit: drift.Value(_isSplitMode && _type == 'expense'),
     );
 
@@ -390,6 +497,246 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     }
   }
 
+
+  String _formatCompactDate(DateTime date) {
+    final now = DateTime.now();
+    if (now.year == date.year && now.month == date.month && now.day == date.day) {
+      return 'Today, ${DateFormat('MMM d').format(date)}';
+    }
+    final yesterday = now.subtract(const Duration(days: 1));
+    if (yesterday.year == date.year && yesterday.month == date.month && yesterday.day == date.day) {
+      return 'Yesterday';
+    }
+    return DateFormat('MMM d, yyyy').format(date);
+  }
+
+  Widget _buildDatePickerWidget(bool isDark, {String label = 'Date'}) {
+    return InkWell(
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: _selectedDate,
+          firstDate: DateTime(2020),
+          lastDate: DateTime(2030),
+        );
+        if (picked != null) {
+          setState(() => _selectedDate = picked);
+        }
+      },
+      borderRadius: BorderRadius.circular(14),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          filled: true,
+          fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          isDense: true,
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.calendar_today_rounded, size: 16, color: Colors.grey),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                _formatCompactDate(_selectedDate),
+                style: const TextStyle(fontSize: 12),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down, size: 24, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoteAndTagsSection(bool isDark) {
+    final suggestedTags = _type == 'expense'
+        ? const ['#dining', '#groceries', '#bills', '#shopping', '#travel', '#health', '#personal', '#entertainment']
+        : (_type == 'income'
+            ? const ['#salary', '#freelance', '#investment', '#gift', '#bonus']
+            : const ['#savings', '#bills', '#investment', '#transfer']);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        // Note / Remarks input
+        TextField(
+          controller: _noteController,
+          maxLength: 150,
+          maxLengthEnforcement: MaxLengthEnforcement.enforced,
+          buildCounter: (_, {required currentLength, required isFocused, required maxLength}) => null,
+          decoration: InputDecoration(
+            labelText: 'Note & Remarks',
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            hintText: 'Add note (e.g. #dinner, lunch)...',
+            prefixIcon: const Icon(Icons.sticky_note_2_outlined, size: 20),
+            filled: true,
+            fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            isDense: true,
+          ),
+          style: const TextStyle(fontSize: 13.5),
+        ),
+
+        const SizedBox(height: 6),
+
+        // Tags & Hashtag Chips
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ..._tags.map((tag) => Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        tag.startsWith('#') ? tag : '#$tag',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      GestureDetector(
+                        onTap: () => _removeTag(tag),
+                        child: const Icon(Icons.close_rounded, size: 13, color: AppColors.primary),
+                      ),
+                    ],
+                  ),
+                )),
+            if (_isAddingTag)
+              Container(
+                width: 120,
+                height: 28,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.primary),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _tagInputController,
+                        autofocus: true,
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                        decoration: const InputDecoration(
+                          prefixText: '#',
+                          prefixStyle: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary),
+                          hintText: 'tag',
+                          hintStyle: TextStyle(fontSize: 11),
+                          contentPadding: EdgeInsets.zero,
+                          border: InputBorder.none,
+                          isDense: true,
+                        ),
+                        onSubmitted: (val) {
+                          _addTag(val);
+                          _tagInputController.clear();
+                          setState(() => _isAddingTag = false);
+                        },
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        if (_tagInputController.text.trim().isNotEmpty) {
+                          _addTag(_tagInputController.text);
+                          _tagInputController.clear();
+                        }
+                        setState(() => _isAddingTag = false);
+                      },
+                      child: const Icon(Icons.check_rounded, size: 15, color: AppColors.primary),
+                    ),
+                    const SizedBox(width: 2),
+                    GestureDetector(
+                      onTap: () {
+                        _tagInputController.clear();
+                        setState(() => _isAddingTag = false);
+                      },
+                      child: const Icon(Icons.close_rounded, size: 14, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              )
+            else
+              InkWell(
+                onTap: () => setState(() => _isAddingTag = true),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add_rounded, size: 13, color: isDark ? Colors.white60 : Colors.black54),
+                      const SizedBox(width: 3),
+                      Text(
+                        'Add #tag',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? Colors.white60 : Colors.black54,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Quick suggestion chips
+            if (_tags.length < 3)
+              ...suggestedTags
+                  .where((t) => !_tags.contains(t))
+                  .take(3)
+                  .map((tag) => InkWell(
+                        onTap: () => _addTag(tag),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.04),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
+                            ),
+                          ),
+                          child: Text(
+                            tag,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: isDark ? Colors.white54 : Colors.black45,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      )),
+          ],
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -421,172 +768,617 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     final allocatedSum = _isSplitMode ? _getAllocatedSplitSum() : totalAmount;
     final remainingSplit = _isSplitMode ? totalAmount - allocatedSum : 0.0;
     final isSplitMatched = (remainingSplit.abs() <= 0.01);
-    final bottomNavPadding = MediaQuery.of(context).viewPadding.bottom;
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+    final isKeyboardOpen = keyboardInset > 0;
+
+    // Auto-select first category if none selected
+    categoriesAsync.whenData((categories) {
+      if (_selectedCategoryId == null && categories.isNotEmpty && !_isSplitMode && widget.transactionToEdit == null) {
+        _selectedCategoryId = categories.first.id;
+      }
+    });
 
     return SafeArea(
       top: false,
       bottom: true,
-      child: Container(
-        height: MediaQuery.of(context).size.height * 0.92,
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-      child: Column(
-        children: [
-          // Header handle
-          const SizedBox(height: 12),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-              borderRadius: BorderRadius.circular(2),
-            ),
+      child: Padding(
+        padding: EdgeInsets.only(bottom: keyboardInset),
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.92,
           ),
-          const SizedBox(height: 12),
-
-          // Type Switcher Tabs (Emil Kowalski Fluid Sliding Pill)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: SlidingPillControl<String>(
-              selectedValue: _type,
-              onValueChanged: (val) => setState(() {
-                _type = val;
-                _selectedCategoryId = null;
-                if (_type != 'expense') {
-                  _isSplitMode = false;
-                }
-              }),
-              segments: const [
-                SlidingPillSegment(
-                  value: 'expense',
-                  label: 'Expense',
-                  activeColor: AppColors.expense,
-                ),
-                SlidingPillSegment(
-                  value: 'income',
-                  label: 'Income',
-                  activeColor: AppColors.income,
-                ),
-                SlidingPillSegment(
-                  value: 'transfer',
-                  label: 'Transfer',
-                  activeColor: AppColors.transfer,
-                ),
-              ],
-            ),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
-
-          const SizedBox(height: 16),
-
-          // Amount Display Area with Emil Kowalski Decaying Spring Shake
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: SpringShake(
-              key: _shakeKey,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                decoration: BoxDecoration(
-                  color: primaryTypeColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: primaryTypeColor.withValues(alpha: 0.3), width: 1.5),
-                ),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.center,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        '${CurrencyFormatter.activeCurrencySymbol} ',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: primaryTypeColor,
-                        ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header handle + Type Switcher Tabs + Amount Display (Swipeable)
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onHorizontalDragEnd: _handleHorizontalSwipe,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header handle
+                    const SizedBox(height: 10),
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      Text(
-                        _amountStr,
-                        style: TextStyle(
-                          fontSize: 34,
-                          fontWeight: FontWeight.w800,
-                          color: primaryTypeColor,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          Expanded(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                12,
-                20,
-                MediaQuery.of(context).viewInsets.bottom > 0
-                    ? MediaQuery.of(context).viewInsets.bottom + 20
-                    : bottomNavPadding + 28,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Title / Description
-                  TextField(
-                    controller: _titleController,
-                    decoration: InputDecoration(
-                      hintText: _type == 'transfer'
-                          ? 'Transfer Note (Optional)'
-                          : (_isSplitMode ? 'Receipt / Merchant Title (e.g. Walmart, Target)' : 'Title / What was this for?'),
-                      prefixIcon: const Icon(Icons.edit_note_rounded),
-                      filled: true,
-                      fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     ),
-                  ),
+                    const SizedBox(height: 10),
 
-                  const SizedBox(height: 12),
+                    // Type Switcher Tabs (Fluid Sliding Pill with drag & swipe)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: SlidingPillControl<String>(
+                        selectedValue: _type,
+                        onValueChanged: _changeType,
+                        segments: const [
+                          SlidingPillSegment(
+                            value: 'expense',
+                            label: 'Expense',
+                            activeColor: AppColors.expense,
+                          ),
+                          SlidingPillSegment(
+                            value: 'income',
+                            label: 'Income',
+                            activeColor: AppColors.income,
+                          ),
+                          SlidingPillSegment(
+                            value: 'transfer',
+                            label: 'Transfer',
+                            activeColor: AppColors.transfer,
+                          ),
+                        ],
+                      ),
+                    ),
 
-                  // Account Selector
-                  Row(
-                    children: [
-                      Expanded(
-                        child: accountsAsync.when(
-                          data: (accounts) {
+                    const SizedBox(height: 10),
+
+                    // Amount Display Area with Emil Kowalski Decaying Spring Shake
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: SpringShake(
+                        key: _shakeKey,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: primaryTypeColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: primaryTypeColor.withValues(alpha: 0.3), width: 1.5),
+                          ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.center,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Text(
+                                  '${CurrencyFormatter.activeCurrencySymbol} ',
+                                  style: TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.bold,
+                                    color: primaryTypeColor,
+                                  ),
+                                ),
+                                Text(
+                                  _amountStr,
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w800,
+                                    color: primaryTypeColor,
+                                    fontFeatures: const [FontFeature.tabularFigures()],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Middle Scrollable Form Content (Smooth scroll with auto-fit, swipeable)
+              Flexible(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onHorizontalDragEnd: _handleHorizontalSwipe,
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Title / Description
+                        TextField(
+                          controller: _titleController,
+                          maxLength: 100,
+                          maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                          buildCounter: (context, {required currentLength, required isFocused, required maxLength}) {
+                            if (currentLength > 60) {
+                              return Text(
+                                '$currentLength/$maxLength',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: currentLength >= 95 ? AppColors.expense : Colors.grey,
+                                ),
+                              );
+                            }
+                            return null;
+                          },
+                          decoration: InputDecoration(
+                            labelText: _type == 'transfer'
+                                ? 'Transfer Note (Optional)'
+                                : (_isSplitMode ? 'Merchant / Split Title' : 'Title / Merchant Name'),
+                            floatingLabelBehavior: FloatingLabelBehavior.always,
+                            hintText: _type == 'transfer'
+                                ? 'Add note...'
+                                : 'e.g. Grocery, Coffee, Store...',
+                            prefixIcon: const Icon(Icons.edit_note_rounded, size: 20),
+                            filled: true,
+                            fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            isDense: true,
+                          ),
+                          style: const TextStyle(fontSize: 13.5),
+                        ),
+
+                      const SizedBox(height: 8),
+
+                      // Receipt / Bill Attachment & Scanner (Compact 40px pill / 42px badge)
+                      ReceiptAttachmentWidget(
+                        autoOpenScanner: widget.autoOpenScanner,
+                        receiptPath: _receiptPath,
+                        transactionTitle: _titleController.text.trim().isNotEmpty ? _titleController.text.trim() : null,
+                        onReceiptChanged: (newPath) {
+                          setState(() => _receiptPath = newPath);
+                        },
+                        onReceiptScanned: (data, savedPath) {
+                          setState(() {
+                            _receiptPath = savedPath;
+                            if (data.amount != null && data.amount! > 0) {
+                              _amountStr = data.amount! % 1 == 0
+                                  ? data.amount!.toInt().toString()
+                                  : data.amount!.toStringAsFixed(2);
+                            }
+                            if (data.date != null) {
+                              _selectedDate = data.date!;
+                            }
+                            if (data.merchantName != null && data.merchantName!.isNotEmpty) {
+                              if (_titleController.text.trim().isEmpty) {
+                                final name = data.merchantName!;
+                                _titleController.text = name.length > 100 ? name.substring(0, 100) : name;
+                              }
+                            }
+                            if (data.suggestedCategoryKeyword != null && _selectedCategoryId == null) {
+                              _attemptAutoMatchCategory(data.suggestedCategoryKeyword!, categoriesAsync.valueOrNull);
+                            }
+                          });
+                        },
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      // Account & Date Row (Side-by-Side 50/50 layout)
+                      if (_type == 'transfer') ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: accountsAsync.when(
+                                data: (accounts) {
+                                  return DropdownButtonFormField<String>(
+                                    isExpanded: true,
+                                    initialValue: _selectedAccountId,
+                                    decoration: InputDecoration(
+                                      labelText: 'From Account',
+                                      filled: true,
+                                      fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      isDense: true,
+                                    ),
+                                    items: accounts.map((acc) {
+                                      return DropdownMenuItem(
+                                        value: acc.id,
+                                        child: Row(
+                                          children: [
+                                            Icon(IconHelper.getIcon(acc.icon), size: 16, color: Color(acc.color)),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                acc.name,
+                                                style: const TextStyle(fontSize: 12),
+                                                overflow: TextOverflow.ellipsis,
+                                                maxLines: 1,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                    onChanged: (val) => setState(() => _selectedAccountId = val),
+                                  );
+                                },
+                                loading: () => const SizedBox.shrink(),
+                                error: (_, _) => const SizedBox.shrink(),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: accountsAsync.when(
+                                data: (accounts) {
+                                  return DropdownButtonFormField<String>(
+                                    isExpanded: true,
+                                    initialValue: _selectedToAccountId,
+                                    decoration: InputDecoration(
+                                      labelText: 'To Account',
+                                      filled: true,
+                                      fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      isDense: true,
+                                    ),
+                                    items: accounts.map((acc) {
+                                      return DropdownMenuItem(
+                                        value: acc.id,
+                                        child: Row(
+                                          children: [
+                                            Icon(IconHelper.getIcon(acc.icon), size: 16, color: Color(acc.color)),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                acc.name,
+                                                style: const TextStyle(fontSize: 12),
+                                                overflow: TextOverflow.ellipsis,
+                                                maxLines: 1,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                    onChanged: (val) => setState(() => _selectedToAccountId = val),
+                                  );
+                                },
+                                loading: () => const SizedBox.shrink(),
+                                error: (_, _) => const SizedBox.shrink(),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _buildDatePickerWidget(isDark),
+                      ] else ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: accountsAsync.when(
+                                data: (accounts) {
+                                  return DropdownButtonFormField<String>(
+                                    isExpanded: true,
+                                    initialValue: _selectedAccountId,
+                                    decoration: InputDecoration(
+                                      labelText: 'Account',
+                                      filled: true,
+                                      fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      isDense: true,
+                                    ),
+                                    items: accounts.map((acc) {
+                                      return DropdownMenuItem(
+                                        value: acc.id,
+                                        child: Row(
+                                          children: [
+                                            Icon(IconHelper.getIcon(acc.icon), size: 16, color: Color(acc.color)),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                acc.name,
+                                                style: const TextStyle(fontSize: 12),
+                                                overflow: TextOverflow.ellipsis,
+                                                maxLines: 1,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                    onChanged: (val) => setState(() => _selectedAccountId = val),
+                                  );
+                                },
+                                loading: () => const SizedBox.shrink(),
+                                error: (_, _) => const SizedBox.shrink(),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildDatePickerWidget(isDark),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // Category Dropdown & Split Mode Toggle
+                      if (_type == 'expense') ...[
+                        const SizedBox(height: 8),
+                        categoriesAsync.when(
+                          data: (categories) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (!_isSplitMode) ...[
+                                  // Category Dropdown + Split Action Pill
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: DropdownButtonFormField<String>(
+                                          isExpanded: true,
+                                          initialValue: _selectedCategoryId,
+                                          decoration: InputDecoration(
+                                            labelText: 'Category',
+                                            filled: true,
+                                            fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(14),
+                                              borderSide: BorderSide.none,
+                                            ),
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                            isDense: true,
+                                          ),
+                                          items: categories.map((cat) {
+                                            return DropdownMenuItem(
+                                              value: cat.id,
+                                              child: Row(
+                                                children: [
+                                                  Icon(IconHelper.getIcon(cat.icon), size: 16, color: Color(cat.color)),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Text(
+                                                      cat.name,
+                                                      style: const TextStyle(fontSize: 12.5),
+                                                      overflow: TextOverflow.ellipsis,
+                                                      maxLines: 1,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }).toList(),
+                                          onChanged: (val) => setState(() => _selectedCategoryId = val),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Material(
+                                        color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                                        borderRadius: BorderRadius.circular(14),
+                                        child: InkWell(
+                                          onTap: () => _toggleSplitMode(true, categories),
+                                          borderRadius: BorderRadius.circular(14),
+                                          child: Container(
+                                            height: 48,
+                                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                                            child: const Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(Icons.call_split_rounded, size: 16, color: Colors.grey),
+                                                SizedBox(width: 4),
+                                                Text(
+                                                  'Split',
+                                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ] else ...[
+                                  // Split Header Row with Active Split Indicator & Switch to cancel
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Row(
+                                        children: [
+                                          Icon(Icons.call_split_rounded, size: 16, color: AppColors.primary),
+                                          SizedBox(width: 6),
+                                          Text(
+                                            'Split Categories',
+                                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                                          ),
+                                        ],
+                                      ),
+                                      TextButton.icon(
+                                        onPressed: () => _toggleSplitMode(false, categories),
+                                        icon: const Icon(Icons.close_rounded, size: 16, color: Colors.grey),
+                                        label: const Text('Cancel Split', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
+                                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+
+                                  // Split Items List
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: isSplitMatched ? AppColors.income : AppColors.warning,
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              'Allocated: ${CurrencyFormatter.format(allocatedSum)} / ${CurrencyFormatter.format(totalAmount)}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                                color: isSplitMatched ? AppColors.income : AppColors.warning,
+                                              ),
+                                            ),
+                                            if (!isSplitMatched)
+                                              InkWell(
+                                                onTap: _autoFillRemainingToLastItem,
+                                                child: Text(
+                                                  'Auto-fill (${CurrencyFormatter.format(remainingSplit)})',
+                                                  style: const TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w700),
+                                                ),
+                                              )
+                                            else
+                                              const Row(
+                                                children: [
+                                                  Icon(Icons.check_circle_rounded, color: AppColors.income, size: 14),
+                                                  SizedBox(width: 4),
+                                                  Text('Balanced', style: TextStyle(fontSize: 11, color: AppColors.income, fontWeight: FontWeight.w600)),
+                                                ],
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 10),
+                                        ListView.separated(
+                                          shrinkWrap: true,
+                                          physics: const NeverScrollableScrollPhysics(),
+                                          itemCount: _splitItems.length,
+                                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                                          itemBuilder: (context, index) {
+                                            final item = _splitItems[index];
+                                            return Row(
+                                              children: [
+                                                Expanded(
+                                                  flex: 3,
+                                                  child: DropdownButtonFormField<String>(
+                                                    initialValue: item.categoryId,
+                                                    isDense: true,
+                                                    decoration: InputDecoration(
+                                                      filled: true,
+                                                      fillColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                                                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                                    ),
+                                                    items: categories.map((cat) {
+                                                      return DropdownMenuItem(
+                                                        value: cat.id,
+                                                        child: Row(
+                                                          children: [
+                                                            Icon(IconHelper.getIcon(cat.icon), size: 14, color: Color(cat.color)),
+                                                            const SizedBox(width: 6),
+                                                            Expanded(
+                                                              child: Text(cat.name, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      );
+                                                    }).toList(),
+                                                    onChanged: (val) => setState(() => item.categoryId = val),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Expanded(
+                                                  flex: 2,
+                                                  child: TextField(
+                                                    controller: item.amountController,
+                                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                                    onChanged: (_) => setState(() {}),
+                                                    decoration: InputDecoration(
+                                                      hintText: 'Amount',
+                                                      prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
+                                                      filled: true,
+                                                      fillColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                                                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                                    ),
+                                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                                  ),
+                                                ),
+                                                IconButton(
+                                                  icon: const Icon(Icons.remove_circle_outline_rounded, color: Colors.redAccent, size: 18),
+                                                  padding: EdgeInsets.zero,
+                                                  constraints: const BoxConstraints(),
+                                                  onPressed: () => _removeSplitItem(index),
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        ),
+                                        const SizedBox(height: 8),
+                                        TextButton.icon(
+                                          onPressed: () => _addSplitItem(categories),
+                                          icon: const Icon(Icons.add_rounded, size: 16),
+                                          label: const Text('+ Add Category Item', style: TextStyle(fontSize: 12)),
+                                          style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
+                          loading: () => const SizedBox.shrink(),
+                          error: (_, _) => const SizedBox.shrink(),
+                        ),
+                      ] else if (_type == 'income') ...[
+                        // Income Category Dropdown
+                        const SizedBox(height: 8),
+                        categoriesAsync.when(
+                          data: (categories) {
                             return DropdownButtonFormField<String>(
                               isExpanded: true,
-                              initialValue: _selectedAccountId,
+                              initialValue: _selectedCategoryId,
                               decoration: InputDecoration(
-                                labelText: _type == 'transfer' ? 'From Account' : 'Account',
+                                labelText: 'Category',
                                 filled: true,
                                 fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(14),
                                   borderSide: BorderSide.none,
                                 ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                isDense: true,
                               ),
-                              items: accounts.map((acc) {
+                              items: categories.map((cat) {
                                 return DropdownMenuItem(
-                                  value: acc.id,
+                                  value: cat.id,
                                   child: Row(
                                     children: [
-                                      Icon(IconHelper.getIcon(acc.icon), size: 18, color: Color(acc.color)),
+                                      Icon(IconHelper.getIcon(cat.icon), size: 16, color: Color(cat.color)),
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
-                                          acc.name,
-                                          style: const TextStyle(fontSize: 13),
+                                          cat.name,
+                                          style: const TextStyle(fontSize: 12.5),
                                           overflow: TextOverflow.ellipsis,
                                           maxLines: 1,
                                         ),
@@ -595,368 +1387,75 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                                   ),
                                 );
                               }).toList(),
-                              onChanged: (val) => setState(() => _selectedAccountId = val),
+                              onChanged: (val) => setState(() => _selectedCategoryId = val),
                             );
                           },
                           loading: () => const SizedBox.shrink(),
                           error: (_, _) => const SizedBox.shrink(),
                         ),
-                      ),
-                      if (_type == 'transfer') ...[
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: accountsAsync.when(
-                            data: (accounts) {
-                              return DropdownButtonFormField<String>(
-                                isExpanded: true,
-                                initialValue: _selectedToAccountId,
-                                decoration: InputDecoration(
-                                  labelText: 'To Account',
-                                  filled: true,
-                                  fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                ),
-                                items: accounts.map((acc) {
-                                  return DropdownMenuItem(
-                                    value: acc.id,
-                                    child: Row(
-                                      children: [
-                                        Icon(IconHelper.getIcon(acc.icon), size: 18, color: Color(acc.color)),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            acc.name,
-                                            style: const TextStyle(fontSize: 13),
-                                            overflow: TextOverflow.ellipsis,
-                                            maxLines: 1,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
-                                onChanged: (val) => setState(() => _selectedToAccountId = val),
-                              );
-                            },
-                            loading: () => const SizedBox.shrink(),
-                            error: (_, _) => const SizedBox.shrink(),
-                          ),
-                        ),
                       ],
+                      _buildNoteAndTagsSection(isDark),
                     ],
                   ),
+                ),
+              ),
+            ),
 
-                  const SizedBox(height: 12),
-
-                  // Split Mode Toggle & Category Selection
-                  if (_type == 'expense') ...[
-                    categoriesAsync.when(
-                      data: (categories) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Split Toggle Row
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text(
-                                  'Split into multiple categories',
-                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                                ),
-                                Switch.adaptive(
-                                  value: _isSplitMode,
-                                  activeTrackColor: AppColors.primary,
-                                  onChanged: (val) => _toggleSplitMode(val, categories),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-
-                            // Split Items List or Standard Category Selector
-                            if (_isSplitMode) ...[
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: isSplitMatched ? AppColors.income : AppColors.warning,
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          'Allocated: ${CurrencyFormatter.format(allocatedSum)} / ${CurrencyFormatter.format(totalAmount)}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                            color: isSplitMatched ? AppColors.income : AppColors.warning,
-                                          ),
-                                        ),
-                                        if (!isSplitMatched)
-                                          InkWell(
-                                            onTap: _autoFillRemainingToLastItem,
-                                            child: Text(
-                                              'Auto-fill (${CurrencyFormatter.format(remainingSplit)})',
-                                              style: const TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w700),
-                                            ),
-                                          )
-                                        else
-                                          const Row(
-                                            children: [
-                                              Icon(Icons.check_circle_rounded, color: AppColors.income, size: 14),
-                                              SizedBox(width: 4),
-                                              Text('Balanced', style: TextStyle(fontSize: 11, color: AppColors.income, fontWeight: FontWeight.w600)),
-                                            ],
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10),
-                                    ListView.separated(
-                                      shrinkWrap: true,
-                                      physics: const NeverScrollableScrollPhysics(),
-                                      itemCount: _splitItems.length,
-                                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                                      itemBuilder: (context, index) {
-                                        final item = _splitItems[index];
-                                        return Row(
-                                          children: [
-                                            Expanded(
-                                              flex: 3,
-                                              child: DropdownButtonFormField<String>(
-                                                initialValue: item.categoryId,
-                                                isDense: true,
-                                                decoration: InputDecoration(
-                                                  filled: true,
-                                                  fillColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                                                ),
-                                                items: categories.map((cat) {
-                                                  return DropdownMenuItem(
-                                                    value: cat.id,
-                                                    child: Row(
-                                                      children: [
-                                                        Icon(IconHelper.getIcon(cat.icon), size: 14, color: Color(cat.color)),
-                                                        const SizedBox(width: 6),
-                                                        Text(cat.name, style: const TextStyle(fontSize: 12)),
-                                                      ],
-                                                    ),
-                                                  );
-                                                }).toList(),
-                                                onChanged: (val) => setState(() => item.categoryId = val),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Expanded(
-                                              flex: 2,
-                                              child: TextField(
-                                                controller: item.amountController,
-                                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                                onChanged: (_) => setState(() {}),
-                                                decoration: InputDecoration(
-                                                  hintText: 'Amount',
-                                                  prefixText: '${CurrencyFormatter.activeCurrencySymbol} ',
-                                                  filled: true,
-                                                  fillColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                                                ),
-                                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                                              ),
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(Icons.remove_circle_outline_rounded, color: Colors.redAccent, size: 18),
-                                              padding: EdgeInsets.zero,
-                                              constraints: const BoxConstraints(),
-                                              onPressed: () => _removeSplitItem(index),
-                                            ),
-                                          ],
-                                        );
-                                      },
-                                    ),
-                                    const SizedBox(height: 8),
-                                    TextButton.icon(
-                                      onPressed: () => _addSplitItem(categories),
-                                      icon: const Icon(Icons.add_rounded, size: 16),
-                                      label: const Text('+ Add Category Item', style: TextStyle(fontSize: 12)),
-                                      style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ] else ...[
-                              // Standard Category Chip Selector
-                              SizedBox(
-                                height: 40,
-                                child: ListView.separated(
-                                  scrollDirection: Axis.horizontal,
-                                  itemCount: categories.length,
-                                  separatorBuilder: (_, _) => const SizedBox(width: 8),
-                                  itemBuilder: (context, index) {
-                                    final cat = categories[index];
-                                    final isSelected = _selectedCategoryId == cat.id;
-                                    return ChoiceChip(
-                                      label: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            IconHelper.getIcon(cat.icon),
-                                            size: 16,
-                                            color: isSelected ? Colors.white : Color(cat.color),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(cat.name),
-                                        ],
-                                      ),
-                                      selected: isSelected,
-                                      selectedColor: Color(cat.color),
-                                      onSelected: (sel) {
-                                        setState(() {
-                                          _selectedCategoryId = sel ? cat.id : null;
-                                        });
-                                      },
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ],
-                        );
-                      },
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, _) => const SizedBox.shrink(),
+              // Docked Bottom Action & Keypad Area (Permanently accessible without scrolling)
+              Container(
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                  border: Border(
+                    top: BorderSide(
+                      color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.05),
+                      width: 1,
                     ),
-                    const SizedBox(height: 12),
-                  ] else if (_type == 'income') ...[
-                    // Income Category Selector
-                    categoriesAsync.when(
-                      data: (categories) {
-                        return SizedBox(
-                          height: 40,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: categories.length,
-                            separatorBuilder: (_, _) => const SizedBox(width: 8),
-                            itemBuilder: (context, index) {
-                              final cat = categories[index];
-                              final isSelected = _selectedCategoryId == cat.id;
-                              return ChoiceChip(
-                                label: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      IconHelper.getIcon(cat.icon),
-                                      size: 16,
-                                      color: isSelected ? Colors.white : Color(cat.color),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(cat.name),
-                                  ],
-                                ),
-                                selected: isSelected,
-                                selectedColor: Color(cat.color),
-                                onSelected: (sel) {
-                                  setState(() {
-                                    _selectedCategoryId = sel ? cat.id : null;
-                                  });
-                                },
-                              );
-                            },
-                          ),
-                        );
-                      },
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, _) => const SizedBox.shrink(),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-
-                  // Date Row
-                  Material(
-                    color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      onTap: () async {
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: _selectedDate,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2030),
-                        );
-                        if (picked != null) {
-                          setState(() => _selectedDate = picked);
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.calendar_today_rounded, size: 18),
-                            const SizedBox(width: 8),
-                            Text(
-                              DateFormat('EEE, MMM d, yyyy').format(_selectedDate),
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                            ),
-                            const Spacer(),
-                            const Text('Change', style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
-                          ],
+                  ),
+                ),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  6,
+                  16,
+                  isKeyboardOpen ? 8 : 10,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (!isKeyboardOpen && !_isSplitMode) ...[
+                      NumKeypad(
+                        accentColor: primaryTypeColor,
+                        onKeyPressed: _onKeypadPress,
+                        onDelete: _onKeypadDelete,
+                        onClear: _onKeypadClear,
+                      ),
+                      const SizedBox(height: 6),
+                    ],
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        onPressed: _saveTransaction,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryTypeColor,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          _isEditMode
+                              ? 'Update Transaction'
+                              : (_isSplitMode ? 'Save Split Transaction' : 'Save Transaction'),
+                          style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Keypad (hidden if split items are manually entered to avoid scrolling clutter, or kept visible)
-                  if (!_isSplitMode) ...[
-                    NumKeypad(
-                      accentColor: primaryTypeColor,
-                      onKeyPressed: _onKeypadPress,
-                      onDelete: _onKeypadDelete,
-                      onClear: _onKeypadClear,
-                    ),
-                    const SizedBox(height: 16),
                   ],
-
-                  // Save / Update Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _saveTransaction,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryTypeColor,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        elevation: 0,
-                      ),
-                      child: Text(
-                        _isEditMode
-                            ? 'Update Transaction'
-                            : (_isSplitMode ? 'Save Split Transaction' : 'Save Transaction'),
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
   }
 }

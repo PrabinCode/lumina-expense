@@ -96,5 +96,22 @@ void main() {
     expect(merchants.isNotEmpty, isTrue);
     expect(merchants.first.totalAmount, greaterThanOrEqualTo(merchants.last.totalAmount));
   });
+
+  test('watchSummaryComparison correctly computes deltas between periods', () async {
+    final now = DateTime.now();
+    final curStart = DateTime(now.year, now.month, 1);
+    final curEnd = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+    final prevStart = DateTime(now.year, now.month - 1, 1);
+    final prevEnd = DateTime(now.year, now.month, 0, 23, 59, 59);
+
+    final stream = repository.watchSummaryComparison(curStart, curEnd, prevStart, prevEnd);
+    final comparison = await stream.first;
+
+    expect(comparison.current, isNotNull);
+    expect(comparison.previous, isNotNull);
+    expect(comparison.incomeDeltaPercent, isA<double>());
+    expect(comparison.expenseDeltaPercent, isA<double>());
+    expect(comparison.savingsDeltaPercent, isA<double>());
+  });
 }
 

@@ -249,6 +249,63 @@ class TransactionRepository {
     });
   }
 
+  /// Watch financial summary comparison between current period and previous period
+  Stream<FinancialSummaryComparison> watchSummaryComparison(
+    DateTime currentStart,
+    DateTime currentEnd,
+    DateTime prevStart,
+    DateTime prevEnd,
+  ) {
+    final minDate = prevStart.isBefore(currentStart) ? prevStart : currentStart;
+    final maxDate = currentEnd.isAfter(prevEnd) ? currentEnd : prevEnd;
+
+    final query = _db.select(_db.transactions)
+      ..where((tbl) => tbl.date.isBiggerOrEqualValue(minDate) & tbl.date.isSmallerOrEqualValue(maxDate));
+
+    return query.watch().map((allTxs) {
+      double curIncome = 0;
+      double curExpense = 0;
+      double prevIncome = 0;
+      double prevExpense = 0;
+
+      for (final tx in allTxs) {
+        final d = tx.date;
+        final inCurrent = (d.isAfter(currentStart) || d.isAtSameMomentAs(currentStart)) &&
+            (d.isBefore(currentEnd) || d.isAtSameMomentAs(currentEnd));
+        final inPrevious = (d.isAfter(prevStart) || d.isAtSameMomentAs(prevStart)) &&
+            (d.isBefore(prevEnd) || d.isAtSameMomentAs(prevEnd));
+
+        if (inCurrent) {
+          if (tx.type == 'income') {
+            curIncome += tx.amount;
+          } else if (tx.type == 'expense') {
+            curExpense += tx.amount;
+          }
+        }
+        if (inPrevious) {
+          if (tx.type == 'income') {
+            prevIncome += tx.amount;
+          } else if (tx.type == 'expense') {
+            prevExpense += tx.amount;
+          }
+        }
+      }
+
+      return FinancialSummaryComparison(
+        current: FinancialSummary(
+          totalIncome: curIncome,
+          totalExpense: curExpense,
+          netSavings: curIncome - curExpense,
+        ),
+        previous: FinancialSummary(
+          totalIncome: prevIncome,
+          totalExpense: prevExpense,
+          netSavings: prevIncome - prevExpense,
+        ),
+      );
+    });
+  }
+
   /// Watch category spending breakdown, aggregating both direct and split transactions
   Stream<List<CategorySpending>> watchCategorySpending(DateTime startDate, DateTime endDate) {
     final cat = _db.categories;

@@ -1,4 +1,5 @@
 import '../../../../core/database/app_database.dart';
+import '../../../transactions/data/transaction_repository.dart';
 
 enum TimeframePeriod {
   week,
@@ -131,3 +132,45 @@ class TopMerchantItem {
     this.categoryColor,
   });
 }
+
+class FinancialSummaryComparison {
+  final FinancialSummary current;
+  final FinancialSummary previous;
+
+  const FinancialSummaryComparison({
+    required this.current,
+    required this.previous,
+  });
+
+  double get incomeDeltaPercent {
+    if (previous.totalIncome == 0) return current.totalIncome > 0 ? 100.0 : 0.0;
+    return ((current.totalIncome - previous.totalIncome) / previous.totalIncome) * 100;
+  }
+
+  double get expenseDeltaPercent {
+    if (previous.totalExpense == 0) return current.totalExpense > 0 ? 100.0 : 0.0;
+    return ((current.totalExpense - previous.totalExpense) / previous.totalExpense) * 100;
+  }
+
+  double get savingsDeltaPercent {
+    if (previous.netSavings == 0) return current.netSavings > 0 ? 100.0 : 0.0;
+    return ((current.netSavings - previous.netSavings) / previous.netSavings.abs()) * 100;
+  }
+}
+
+enum InsightType { anomaly, positive, warning, neutral }
+
+class SmartInsight {
+  final String title;
+  final String message;
+  final InsightType type;
+  final String categoryName;
+
+  const SmartInsight({
+    required this.title,
+    required this.message,
+    required this.type,
+    this.categoryName = '',
+  });
+}
+

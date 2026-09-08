@@ -7,7 +7,9 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/icon_helper.dart';
 import '../../../../core/widgets/sonner_toast.dart';
+import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../data/category_repository.dart';
+import '../widgets/category_reassignment_dialog.dart';
 
 class CategoriesScreen extends ConsumerStatefulWidget {
   const CategoriesScreen({super.key});
@@ -78,47 +80,121 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> with Single
     );
   }
 
-  void _confirmDeleteCategory(Category category) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Delete "${category.name}"?'),
-          content: const Text(
-            'Are you sure you want to delete this category? Existing transactions with this category will remain, but the category itself will be removed.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+  Future<void> _confirmDeleteCategory(Category category) async {
+    final repo = ref.read(categoryRepositoryProvider);
+    final recycleRepo = ref.read(recycleBinRepositoryProvider);
+
+    // 1. Guard against deleting the last remaining category of this type
+    final allCategories = await repo.getAllCategories(type: category.type);
+    final alternatives = allCategories.where((c) => c.id != category.id).toList();
+
+    if (alternatives.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Cannot delete "${category.name}". At least one ${category.type} category is required.'),
+          backgroundColor: AppColors.expense,
+        ),
+      );
+      return;
+    }
+
+    // 2. Fetch usage statistics across transactions, splits, budgets, and subscriptions
+    final usage = await repo.getCategoryUsage(category.id);
+    final affectedTxIds = await repo.getAssociatedTransactionIds(category.id);
+
+    if (!mounted) return;
+
+    if (usage.hasUsages) {
+      // 3A. Show intelligent reassignment dialog when dependencies exist
+      final result = await CategoryReassignmentDialog.show(
+        context,
+        category: category,
+        usage: usage,
+        availableCategories: alternatives,
+      );
+
+      if (result == null || !result.shouldDelete) return;
+
+      await repo.deleteCategoryWithReassignment(
+        categoryId: category.id,
+        targetCategoryId: result.targetCategoryId,
+        deleteAssociatedBudget: result.deleteAssociatedBudget,
+      );
+
+      final recycleId = await recycleRepo.moveCategoryToRecycleBin(
+        category,
+        affectedTransactionIds: affectedTxIds,
+        reassignedToId: result.targetCategoryId,
+      );
+
+      ref.read(categoryOrderVersionProvider.notifier).state++;
+
+      final targetName = result.targetCategoryId != null
+          ? alternatives.firstWhere((c) => c.id == result.targetCategoryId, orElse: () => alternatives.first).name
+          : null;
+
+      Sonner.success(
+        'Deleted category "${category.name}"',
+        description: targetName != null
+            ? 'Reassigned ${usage.transactionCount + usage.splitCount} transactions to "$targetName"'
+            : 'Transactions marked as Uncategorized',
+        undoLabel: 'UNDO',
+        onUndo: () async {
+          if (recycleId.isNotEmpty) {
+            await recycleRepo.restoreItem(recycleId);
+            ref.read(categoryOrderVersionProvider.notifier).state++;
+            Sonner.success('Restored category "${category.name}"');
+          }
+        },
+      );
+    } else {
+      // 3B. Quick confirmation for unused category
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: Text('Delete "${category.name}"?'),
+            content: const Text(
+              'Are you sure you want to delete this category? It is not currently used by any transactions or budgets.',
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.expense,
-                foregroundColor: Colors.white,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
               ),
-              onPressed: () async {
-                final repo = ref.read(categoryRepositoryProvider);
-                await repo.deleteCategory(category.id);
-                if (context.mounted) Navigator.pop(context);
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.expense,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Delete'),
+              ),
+            ],
+          );
+        },
+      );
 
-                Sonner.success(
-                  'Deleted category "${category.name}"',
-                  description: 'Tap undo to restore',
-                  undoLabel: 'UNDO',
-                  onUndo: () async {
-                    await repo.restoreCategory(category);
-                    Sonner.success('Restored category "${category.name}"');
-                  },
-                );
-              },
-              child: const Text('Delete'),
-            ),
+      if (confirmed != true) return;
 
-          ],
-        );
-      },
-    );
+      await repo.deleteCategory(category.id);
+      final recycleId = await recycleRepo.moveCategoryToRecycleBin(category);
+      ref.read(categoryOrderVersionProvider.notifier).state++;
+
+      Sonner.success(
+        'Deleted category "${category.name}"',
+        description: 'Moved to Recycle Bin',
+        undoLabel: 'UNDO',
+        onUndo: () async {
+          if (recycleId.isNotEmpty) {
+            await recycleRepo.restoreItem(recycleId);
+            ref.read(categoryOrderVersionProvider.notifier).state++;
+            Sonner.success('Restored category "${category.name}"');
+          }
+        },
+      );
+    }
   }
 
   @override
@@ -168,7 +244,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> with Single
   }
 }
 
-class _CategoryListView extends ConsumerWidget {
+class _CategoryListView extends ConsumerStatefulWidget {
   final String type;
   final Function(Category) onEdit;
   final Function(Category) onDelete;
@@ -180,8 +256,15 @@ class _CategoryListView extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final categoriesAsync = ref.watch(categoriesStreamProvider(type));
+  ConsumerState<_CategoryListView> createState() => _CategoryListViewState();
+}
+
+class _CategoryListViewState extends ConsumerState<_CategoryListView> {
+  List<Category>? _localCategories;
+
+  @override
+  Widget build(BuildContext context) {
+    final categoriesAsync = ref.watch(categoriesStreamProvider(widget.type));
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return categoriesAsync.when(
@@ -194,13 +277,25 @@ class _CategoryListView extends ConsumerWidget {
                 Icon(Icons.category_outlined, size: 56, color: Colors.grey.withValues(alpha: 0.5)),
                 const SizedBox(height: 12),
                 Text(
-                  'No $type categories yet',
+                  'No ${widget.type} categories yet',
                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                 ),
               ],
             ),
           );
         }
+
+        // Keep local order while preserving edits/updates from stream
+        final streamIds = categories.map((c) => c.id).toSet();
+        final localIds = _localCategories?.map((c) => c.id).toSet() ?? {};
+        if (_localCategories == null || !streamIds.containsAll(localIds) || !localIds.containsAll(streamIds)) {
+          _localCategories = List<Category>.from(categories);
+        } else {
+          final catMap = {for (final c in categories) c.id: c};
+          _localCategories = _localCategories!.map((c) => catMap[c.id] ?? c).toList();
+        }
+
+        final currentList = _localCategories!;
 
         return Column(
           children: [
@@ -211,7 +306,7 @@ class _CategoryListView extends ConsumerWidget {
                   Icon(Icons.drag_indicator_rounded, size: 16, color: Colors.grey.shade500),
                   const SizedBox(width: 6),
                   Text(
-                    'Drag & hold to reorder categories',
+                    'Drag handle on the right to reorder categories',
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
                   ),
                 ],
@@ -219,21 +314,24 @@ class _CategoryListView extends ConsumerWidget {
             ),
             Expanded(
               child: ReorderableListView.builder(
+                buildDefaultDragHandles: false,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                itemCount: categories.length,
-                onReorder: (oldIndex, newIndex) {
+                itemCount: currentList.length,
+                onReorder: (oldIndex, newIndex) async {
                   if (newIndex > oldIndex) {
                     newIndex -= 1;
                   }
-                  final list = List<Category>.from(categories);
-                  final item = list.removeAt(oldIndex);
-                  list.insert(newIndex, item);
+                  setState(() {
+                    final item = _localCategories!.removeAt(oldIndex);
+                    _localCategories!.insert(newIndex, item);
+                  });
 
-                  final idList = list.map((c) => c.id).toList();
-                  ref.read(categoryRepositoryProvider).saveCategoryOrder(idList, type);
+                  final idList = _localCategories!.map((c) => c.id).toList();
+                  await ref.read(categoryRepositoryProvider).saveCategoryOrder(idList, widget.type);
+                  ref.read(categoryOrderVersionProvider.notifier).state++;
                 },
                 itemBuilder: (context, index) {
-                  final cat = categories[index];
+                  final cat = currentList[index];
                   final catColor = Color(cat.color);
 
                   return Container(
@@ -270,19 +368,19 @@ class _CategoryListView extends ConsumerWidget {
                         children: [
                           IconButton(
                             icon: const Icon(Icons.edit_outlined, size: 18),
-                            onPressed: () => onEdit(cat),
+                            onPressed: () => widget.onEdit(cat),
                             tooltip: 'Edit',
                           ),
                           IconButton(
                             icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.expense),
-                            onPressed: () => onDelete(cat),
+                            onPressed: () => widget.onDelete(cat),
                             tooltip: 'Delete',
                           ),
                           ReorderableDragStartListener(
                             index: index,
                             child: const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 4),
-                              child: Icon(Icons.drag_handle_rounded, color: Colors.grey),
+                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                              child: Icon(Icons.drag_handle_rounded, color: Colors.grey, size: 22),
                             ),
                           ),
                         ],

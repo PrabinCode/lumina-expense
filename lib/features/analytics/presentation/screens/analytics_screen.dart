@@ -8,15 +8,15 @@ import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
-import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../../transactions/data/transaction_repository.dart';
-import '../../../transactions/presentation/screens/add_transaction_sheet.dart';
+import '../../../transactions/presentation/widgets/interactive_transaction_tile.dart';
 import '../../domain/models/analytics_models.dart';
-import '../../../../core/widgets/sonner_toast.dart';
+import '../widgets/burn_rate_metric_strip.dart';
 import '../widgets/cash_flow_bar_chart.dart';
 import '../widgets/category_trend_list.dart';
 import '../widgets/day_of_week_heatmap.dart';
 import '../widgets/macro_50_30_20_card.dart';
+import '../widgets/smart_insights_card.dart';
 import '../widgets/spending_velocity_chart.dart';
 import '../widgets/tag_matrix_widget.dart';
 import '../widgets/top_merchants_card.dart';
@@ -105,6 +105,34 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
         return (startOfYear, endOfYear);
     }
   }
+
+  (DateTime, DateTime) _calculatePreviousDateRange() {
+    switch (_currentPeriod) {
+      case TimeframePeriod.week:
+        final weekday = _referenceDate.weekday;
+        final startOfPrevWeek = DateTime(_referenceDate.year, _referenceDate.month, _referenceDate.day - (weekday - 1) - 7);
+        final endOfPrevWeek = DateTime(startOfPrevWeek.year, startOfPrevWeek.month, startOfPrevWeek.day + 6, 23, 59, 59);
+        return (startOfPrevWeek, endOfPrevWeek);
+
+      case TimeframePeriod.month:
+        final startOfPrevMonth = DateTime(_referenceDate.year, _referenceDate.month - 1, 1);
+        final endOfPrevMonth = DateTime(_referenceDate.year, _referenceDate.month, 0, 23, 59, 59);
+        return (startOfPrevMonth, endOfPrevMonth);
+
+      case TimeframePeriod.quarter:
+        final currentQuarter = ((_referenceDate.month - 1) / 3).floor();
+        final startMonth = (currentQuarter - 1) * 3 + 1;
+        final startOfPrevQuarter = DateTime(_referenceDate.year, startMonth, 1);
+        final endOfPrevQuarter = DateTime(_referenceDate.year, startMonth + 3, 0, 23, 59, 59);
+        return (startOfPrevQuarter, endOfPrevQuarter);
+
+      case TimeframePeriod.year:
+        final startOfPrevYear = DateTime(_referenceDate.year - 1, 1, 1);
+        final endOfPrevYear = DateTime(_referenceDate.year - 1, 12, 31, 23, 59, 59);
+        return (startOfPrevYear, endOfPrevYear);
+    }
+  }
+
 
   String _formatRangeLabel(DateTime start, DateTime end) {
     switch (_currentPeriod) {
@@ -243,77 +271,11 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
                               child: ListView.separated(
                                 controller: scrollController,
                                 itemCount: txs.length,
-                                separatorBuilder: (context, index) => const Divider(height: 12),
+                                separatorBuilder: (context, index) => const SizedBox(height: 8),
                                 itemBuilder: (context, index) {
                                   final item = txs[index];
-                                  final tx = item.transaction;
-                                  return ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    title: Text(tx.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                                    subtitle: Text(
-                                      '${DateFormat('MMM d, yyyy').format(tx.date)} • ${item.account.name}${tx.note != null && tx.note!.isNotEmpty ? " • ${tx.note}" : ""}',
-                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                    ),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          '-${CurrencyFormatter.format(tx.amount)}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                            color: AppColors.expense,
-                                          ),
-                                        ),
-                                        PopupMenuButton<String>(
-                                          icon: const Icon(Icons.more_vert_rounded, size: 18, color: Colors.grey),
-                                          onSelected: (val) async {
-                                            if (val == 'edit') {
-                                              if (context.mounted) {
-                                                await showModalBottomSheet(
-                                                  context: context,
-                                                  isScrollControlled: true,
-                                                  backgroundColor: Colors.transparent,
-                                                  builder: (_) => AddTransactionSheet(
-                                                    transactionToEdit: tx,
-                                                  ),
-                                                );
-                                              }
-                                            } else if (val == 'delete') {
-                                              await ref.read(recycleBinRepositoryProvider).moveTransactionToRecycleBin(tx.id);
-                                              if (context.mounted) {
-                                                Sonner.success(
-                                                  'Moved to Trash',
-                                                  description: '"${tx.title}" can be restored from Recycle Bin',
-                                                );
-                                              }
-                                            }
-                                          },
-                                          itemBuilder: (ctx) => [
-                                            const PopupMenuItem(
-                                              value: 'edit',
-                                              child: Row(
-                                                children: [
-                                                  Icon(Icons.edit_rounded, size: 18, color: AppColors.primary),
-                                                  SizedBox(width: 8),
-                                                  Text('Edit'),
-                                                ],
-                                              ),
-                                            ),
-                                            const PopupMenuItem(
-                                              value: 'delete',
-                                              child: Row(
-                                                children: [
-                                                  Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.expense),
-                                                  SizedBox(width: 8),
-                                                  Text('Move to Trash'),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
+                                  return InteractiveTransactionTile(
+                                    item: item,
                                   );
                                 },
                               ),
@@ -335,6 +297,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
   void _showPeriodTransactionsSheet(BuildContext context, DateTime startDate, DateTime endDate, String rangeLabel) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     String filterQuery = '';
+    String activeFilter = 'all';
 
     showModalBottomSheet(
       context: context,
@@ -347,7 +310,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
         return StatefulBuilder(
           builder: (context, setModalState) {
             return DraggableScrollableSheet(
-              initialChildSize: 0.8,
+              initialChildSize: 0.85,
               minChildSize: 0.4,
               maxChildSize: 0.95,
               expand: false,
@@ -397,6 +360,26 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
                         ],
                       ),
                       const SizedBox(height: 12),
+
+                      // Quick Filter Chips
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _buildFilterChip('all', 'All', activeFilter, (val) => setModalState(() => activeFilter = val), isDark),
+                            const SizedBox(width: 6),
+                            _buildFilterChip('expense', 'Expenses', activeFilter, (val) => setModalState(() => activeFilter = val), isDark),
+                            const SizedBox(width: 6),
+                            _buildFilterChip('income', 'Income', activeFilter, (val) => setModalState(() => activeFilter = val), isDark),
+                            const SizedBox(width: 6),
+                            _buildFilterChip('receipt', 'Has Receipt 🧾', activeFilter, (val) => setModalState(() => activeFilter = val), isDark),
+                            const SizedBox(width: 6),
+                            _buildFilterChip('split', 'Split 🔀', activeFilter, (val) => setModalState(() => activeFilter = val), isDark),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
                       TextField(
                         decoration: InputDecoration(
                           hintText: 'Search title, category, or note...',
@@ -421,9 +404,17 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
                               ),
                           builder: (context, snapshot) {
                             final allTxs = snapshot.data ?? [];
+                            final filteredByType = allTxs.where((t) {
+                              if (activeFilter == 'expense') return t.transaction.type == 'expense';
+                              if (activeFilter == 'income') return t.transaction.type == 'income';
+                              if (activeFilter == 'receipt') return t.transaction.receiptPath != null && t.transaction.receiptPath!.isNotEmpty;
+                              if (activeFilter == 'split') return t.transaction.isSplit;
+                              return true;
+                            }).toList();
+
                             final txs = filterQuery.isEmpty
-                                ? allTxs
-                                : allTxs.where((t) {
+                                ? filteredByType
+                                : filteredByType.where((t) {
                                     final matchTitle = t.transaction.title.toLowerCase().contains(filterQuery);
                                     final matchCat = t.category?.name.toLowerCase().contains(filterQuery) ?? false;
                                     final matchNote = t.transaction.note?.toLowerCase().contains(filterQuery) ?? false;
@@ -440,7 +431,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
                                     Text(
                                       filterQuery.isNotEmpty
                                           ? 'No transactions match "$filterQuery"'
-                                          : 'No transactions recorded for this period',
+                                          : 'No transactions found for this filter',
                                       style: const TextStyle(color: Colors.grey, fontSize: 13),
                                     ),
                                   ],
@@ -482,94 +473,11 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
                                   child: ListView.separated(
                                     controller: scrollController,
                                     itemCount: txs.length,
-                                    separatorBuilder: (context, index) => const Divider(height: 12),
+                                    separatorBuilder: (context, index) => const SizedBox(height: 8),
                                     itemBuilder: (context, index) {
                                       final item = txs[index];
-                                      final tx = item.transaction;
-                                      final cat = item.category;
-                                      final isIncome = tx.type == 'income';
-
-                                      return ListTile(
-                                        contentPadding: EdgeInsets.zero,
-                                        leading: Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            color: cat != null
-                                                ? Color(cat.color).withValues(alpha: 0.15)
-                                                : (isIncome ? AppColors.income.withValues(alpha: 0.15) : AppColors.expense.withValues(alpha: 0.15)),
-                                            borderRadius: BorderRadius.circular(10),
-                                          ),
-                                          child: Icon(
-                                            IconHelper.getCategoryIcon(cat?.icon ?? (isIncome ? 'payments' : 'shopping_bag')),
-                                            color: cat != null ? Color(cat.color) : (isIncome ? AppColors.income : AppColors.expense),
-                                            size: 20,
-                                          ),
-                                        ),
-                                        title: Text(tx.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                                        subtitle: Text(
-                                          '${DateFormat('MMM d, yyyy').format(tx.date)} • ${cat?.name ?? (isIncome ? "Income" : "Expense")} • ${item.account.name}',
-                                          style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                        ),
-                                        trailing: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              '${isIncome ? "+" : "-"}${CurrencyFormatter.format(tx.amount)}',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14,
-                                                color: isIncome ? AppColors.income : AppColors.expense,
-                                              ),
-                                            ),
-                                            PopupMenuButton<String>(
-                                              icon: const Icon(Icons.more_vert_rounded, size: 18, color: Colors.grey),
-                                              onSelected: (val) async {
-                                                if (val == 'edit') {
-                                                  if (context.mounted) {
-                                                    await showModalBottomSheet(
-                                                      context: context,
-                                                      isScrollControlled: true,
-                                                      backgroundColor: Colors.transparent,
-                                                      builder: (_) => AddTransactionSheet(
-                                                        transactionToEdit: tx,
-                                                      ),
-                                                    );
-                                                  }
-                                                } else if (val == 'delete') {
-                                                  await ref.read(recycleBinRepositoryProvider).moveTransactionToRecycleBin(tx.id);
-                                                  if (context.mounted) {
-                                                    Sonner.success(
-                                                      'Moved to Trash',
-                                                      description: '"${tx.title}" can be restored from Recycle Bin',
-                                                    );
-                                                  }
-                                                }
-                                              },
-                                              itemBuilder: (ctx) => [
-                                                const PopupMenuItem(
-                                                  value: 'edit',
-                                                  child: Row(
-                                                    children: [
-                                                      Icon(Icons.edit_rounded, size: 18, color: AppColors.primary),
-                                                      SizedBox(width: 8),
-                                                      Text('Edit'),
-                                                    ],
-                                                  ),
-                                                ),
-                                                const PopupMenuItem(
-                                                  value: 'delete',
-                                                  child: Row(
-                                                    children: [
-                                                      Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.expense),
-                                                      SizedBox(width: 8),
-                                                      Text('Move to Trash'),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
+                                      return InteractiveTransactionTile(
+                                        item: item,
                                       );
                                     },
                                   ),
@@ -590,14 +498,98 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
     );
   }
 
+  Widget _buildFilterChip(String key, String label, String activeKey, ValueChanged<String> onSelected, bool isDark) {
+    final isSelected = activeKey == key;
+    return GestureDetector(
+      onTap: () => onSelected(key),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.primary
+              : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : Colors.transparent,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeltaBadge(double? delta, {bool invertColor = false}) {
+    if (delta == null || delta.isNaN) return const SizedBox.shrink();
+    final isPositive = delta > 0.05;
+    final isNegative = delta < -0.05;
+    final Color badgeColor;
+    final IconData badgeIcon;
+
+    if (!isPositive && !isNegative) {
+      badgeColor = Colors.grey;
+      badgeIcon = Icons.remove_rounded;
+    } else if (isPositive) {
+      badgeColor = invertColor ? AppColors.expense : AppColors.income;
+      badgeIcon = Icons.arrow_upward_rounded;
+    } else {
+      badgeColor = invertColor ? AppColors.income : AppColors.expense;
+      badgeIcon = Icons.arrow_downward_rounded;
+    }
+
+    final text = isPositive
+        ? '+${delta.toStringAsFixed(0)}%'
+        : (isNegative ? '${delta.toStringAsFixed(0)}%' : '0%');
+
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: badgeColor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(badgeIcon, size: 9, color: badgeColor),
+          const SizedBox(width: 2),
+          Flexible(
+            child: Text(
+              '$text vs prev',
+              style: TextStyle(
+                fontSize: 8.5,
+                fontWeight: FontWeight.bold,
+                color: badgeColor,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.watch(currencyProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final (startDate, endDate) = _calculateDateRange();
+    final (prevStartDate, prevEndDate) = _calculatePreviousDateRange();
     final rangeLabel = _formatRangeLabel(startDate, endDate);
 
-    final summaryStream = ref.watch(transactionRepositoryProvider).watchSummary(startDate, endDate);
+    final summaryComparisonStream = ref.watch(transactionRepositoryProvider).watchSummaryComparison(
+          startDate,
+          endDate,
+          prevStartDate,
+          prevEndDate,
+        );
     final categorySpendingStream = ref.watch(transactionRepositoryProvider).watchCategorySpending(startDate, endDate);
     final cashFlowStream = ref.watch(transactionRepositoryProvider).watchMonthlyCashFlowTrend(months: 6);
     final dayOfWeekStream = ref.watch(transactionRepositoryProvider).watchDayOfWeekDistribution(startDate, endDate);
@@ -699,144 +691,174 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
 
             const SizedBox(height: 14),
 
-            // Financial Summary Card with Savings Rate & Browse Transactions Action
-            StreamBuilder<FinancialSummary>(
-              stream: summaryStream,
+            // Financial Summary Card with Savings Rate, Period Comparison & Pacing
+            StreamBuilder<FinancialSummaryComparison>(
+              stream: summaryComparisonStream,
               builder: (context, snapshot) {
-                final income = snapshot.data?.totalIncome ?? 0.0;
-                final expense = snapshot.data?.totalExpense ?? 0.0;
-                final savings = snapshot.data?.netSavings ?? 0.0;
+                final comp = snapshot.data;
+                final income = comp?.current.totalIncome ?? 0.0;
+                final expense = comp?.current.totalExpense ?? 0.0;
+                final savings = comp?.current.netSavings ?? 0.0;
                 final savingsRate = income > 0 ? ((income - expense) / income) * 100 : 0.0;
+                final incomeDelta = comp?.incomeDeltaPercent;
+                final expenseDelta = comp?.expenseDeltaPercent;
+                final savingsDelta = comp?.savingsDeltaPercent;
 
-                return Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
+                return Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                      ),
+                      child: Column(
                         children: [
-                          Expanded(
-                            child: Column(
-                              children: [
-                                const Text('Income', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                                const SizedBox(height: 4),
-                                Text(
-                                  CurrencyFormatter.format(income),
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.income,
-                                  ),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    const Text('Income', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      CurrencyFormatter.format(income),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.income,
+                                      ),
+                                    ),
+                                    _buildDeltaBadge(incomeDelta, invertColor: false),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                              Container(height: 36, width: 1, color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    const Text('Expense', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      CurrencyFormatter.format(expense),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.expense,
+                                      ),
+                                    ),
+                                    _buildDeltaBadge(expenseDelta, invertColor: true),
+                                  ],
+                                ),
+                              ),
+                              Container(height: 36, width: 1, color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    const Text('Net Savings', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      CurrencyFormatter.format(savings),
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: savings >= 0 ? AppColors.income : AppColors.expense,
+                                      ),
+                                    ),
+                                    _buildDeltaBadge(savingsDelta, invertColor: false),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                          Container(height: 24, width: 1, color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-                          Expanded(
-                            child: Column(
-                              children: [
-                                const Text('Expense', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                                const SizedBox(height: 4),
-                                Text(
-                                  CurrencyFormatter.format(expense),
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.expense,
+                          if (income > 0) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Row(
+                                    children: [
+                                      Icon(Icons.savings_rounded, size: 14, color: AppColors.primary),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Savings Rate',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
+                                  Text(
+                                    '${savingsRate.toStringAsFixed(1)}%',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: savingsRate >= 20 ? AppColors.income : (savingsRate >= 0 ? AppColors.primary : AppColors.expense),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          Container(height: 24, width: 1, color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-                          Expanded(
-                            child: Column(
-                              children: [
-                                const Text('Net Savings', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                                const SizedBox(height: 4),
-                                Text(
-                                  CurrencyFormatter.format(savings),
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: savings >= 0 ? AppColors.income : AppColors.expense,
+                          ],
+                          const SizedBox(height: 10),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () => _showPeriodTransactionsSheet(context, startDate, endDate, rangeLabel),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.receipt_long_rounded, size: 14, color: AppColors.primary),
+                                  SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      'Browse all transactions in this period',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  SizedBox(width: 4),
+                                  Icon(Icons.chevron_right_rounded, size: 14, color: AppColors.primary),
+                                ],
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      if (income > 0) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Row(
-                                children: [
-                                  Icon(Icons.savings_rounded, size: 14, color: AppColors.primary),
-                                  SizedBox(width: 6),
-                                  Text(
-                                    'Savings Rate',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey),
-                                  ),
-                                ],
-                              ),
-                              Text(
-                                '${savingsRate.toStringAsFixed(1)}%',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: savingsRate >= 20 ? AppColors.income : (savingsRate >= 0 ? AppColors.primary : AppColors.expense),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(10),
-                        onTap: () => _showPeriodTransactionsSheet(context, startDate, endDate, rangeLabel),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.receipt_long_rounded, size: 14, color: AppColors.primary),
-                              SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  'Browse all transactions in this period',
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              SizedBox(width: 4),
-                              Icon(Icons.chevron_right_rounded, size: 14, color: AppColors.primary),
-                            ],
-                          ),
-
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 14),
+                    // Burn Rate & Daily Pacing Strip
+                    BurnRateMetricStrip(
+                      startDate: startDate,
+                      endDate: endDate,
+                      totalExpense: expense,
+                      currentPeriod: _currentPeriod,
+                    ),
+                  ],
                 );
               },
+            ),
+
+            const SizedBox(height: 14),
+
+            // Smart Financial Insights & Anomaly Radar
+            SmartInsightsCard.live(
+              startDate: startDate,
+              endDate: endDate,
+              prevStartDate: prevStartDate,
+              prevEndDate: prevEndDate,
+              currentPeriod: _currentPeriod,
             ),
 
             const SizedBox(height: 16),

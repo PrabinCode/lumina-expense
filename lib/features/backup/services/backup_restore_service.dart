@@ -871,19 +871,23 @@ class BackupRestoreService {
     });
   }
 
-  /// Populate realistic Demo / Sample data
+  /// Populate comprehensive, realistic multi-month Demo / Sample data
+  /// Simulates an active user who has used Lumina Expense for 3-4 months.
   Future<void> seedDemoData() async {
     const uuid = Uuid();
     final now = DateTime.now();
 
     await _db.transaction(() async {
-      // 1. Clear all existing data
+      // 1. Clear all existing records cleanly in reverse dependency order
+      await _db.delete(_db.deletedItems).go();
       await _db.delete(_db.recurringTransactions).go();
+      await _db.delete(_db.debtRepayments).go();
+      await _db.delete(_db.debts).go();
+      await _db.delete(_db.goalTransactions).go();
+      await _db.delete(_db.goals).go();
       await _db.delete(_db.transactionSplits).go();
       await _db.delete(_db.transactions).go();
-      await _db.delete(_db.debts).go();
       await _db.delete(_db.budgets).go();
-      await _db.delete(_db.goals).go();
       await _db.delete(_db.categories).go();
       await _db.delete(_db.accounts).go();
 
@@ -904,7 +908,7 @@ class BackupRestoreService {
       final existingCats = await _db.select(_db.categories).get();
       final catMap = {for (var c in existingCats) c.name: c.id};
 
-      // 3. Insert Realistic Accounts
+      // 3. Insert Realistic Accounts with authentic starting balances
       const bankAccId = DefaultData.defaultBankId;
       const cashAccId = DefaultData.defaultAccountId;
       const savingsAccId = 'acc_high_yield_savings';
@@ -915,7 +919,7 @@ class BackupRestoreService {
               id: bankAccId,
               name: 'Main Checking Account',
               type: 'bank',
-              initialBalance: const Value(4250.00),
+              initialBalance: const Value(5200.00),
               currency: const Value('USD'),
               icon: const Value('account_balance'),
               color: const Value(0xFF1E88E5),
@@ -927,7 +931,7 @@ class BackupRestoreService {
               id: cashAccId,
               name: 'Daily Cash Wallet',
               type: 'cash',
-              initialBalance: const Value(320.00),
+              initialBalance: const Value(380.00),
               currency: const Value('USD'),
               icon: const Value('account_balance_wallet'),
               color: const Value(0xFF43A047),
@@ -937,9 +941,9 @@ class BackupRestoreService {
       await _db.into(_db.accounts).insert(
             AccountsCompanion.insert(
               id: savingsAccId,
-              name: 'High-Yield Savings',
+              name: 'High-Yield Savings (4.5% APY)',
               type: 'savings',
-              initialBalance: const Value(8500.00),
+              initialBalance: const Value(12500.00),
               currency: const Value('USD'),
               icon: const Value('savings'),
               color: const Value(0xFFFB8C00),
@@ -958,13 +962,13 @@ class BackupRestoreService {
             ),
           );
 
-      // 4. Insert Active Monthly Budgets
+      // 4. Insert Active Monthly Budgets (varied realistic thresholds)
       final budgetConfigs = [
-        ('Food & Dining', 450.0),
-        ('Groceries', 400.0),
-        ('Shopping', 250.0),
-        ('Entertainment', 150.0),
-        ('Transportation', 200.0),
+        ('Groceries', 450.0),       // ~75% spent (Healthy Green)
+        ('Food & Dining', 350.0),   // ~92% spent (Warning Orange)
+        ('Shopping', 250.0),        // ~108% spent (Over Budget Red)
+        ('Transportation', 200.0),  // ~45% spent (Healthy Green)
+        ('Entertainment', 150.0),   // ~58% spent (Healthy Green)
       ];
 
       for (final b in budgetConfigs) {
@@ -980,50 +984,104 @@ class BackupRestoreService {
         }
       }
 
-      // 5. Insert Rich Historical Transactions (Past 30 Days)
+      // 5. Insert Rich Longitudinal Historical Transactions (Past 120 Days across 4 Months)
       final sampleTxs = [
-        // Income entries
-        (title: 'Tech Lead Monthly Salary', amount: 4500.0, type: 'income', cat: 'Salary', acc: bankAccId, daysAgo: 25, tags: '#work,#salary', note: 'Direct deposit paycheck'),
-        (title: 'Freelance Mobile UI/UX Project', amount: 1250.0, type: 'income', cat: 'Freelance & Projects', acc: bankAccId, daysAgo: 12, tags: '#freelance', note: 'Client milestone completion payment'),
-        (title: 'Quarterly S&P500 Dividends', amount: 185.40, type: 'income', cat: 'Investments & Dividends', acc: savingsAccId, daysAgo: 18, tags: '#investments', note: 'Vanguard portfolio dividend distribution'),
-        (title: 'Birthday Gift from Family', amount: 100.0, type: 'income', cat: 'Gifts & Grants', acc: cashAccId, daysAgo: 6, tags: '#gift', note: 'Birthday card cash'),
+        // ================= MONTH 0 (Current Month: 0 - 28 days ago) =================
+        // Income
+        (title: 'Tech Lead Monthly Salary', amount: 4500.0, type: 'income', cat: 'Salary', acc: bankAccId, daysAgo: 5, tags: '#work,#salary', note: 'Direct deposit paycheck'),
+        (title: 'Mobile App Consulting Milestone', amount: 1250.0, type: 'income', cat: 'Freelance & Projects', acc: bankAccId, daysAgo: 12, tags: '#freelance', note: 'Client milestone completion payment'),
+        (title: 'Vanguard S&P 500 Index Dividend', amount: 185.40, type: 'income', cat: 'Investments & Dividends', acc: savingsAccId, daysAgo: 18, tags: '#investments', note: 'Quarterly portfolio dividend distribution'),
+        (title: 'Birthday Cash Gift from Parents', amount: 100.0, type: 'income', cat: 'Gifts & Grants', acc: cashAccId, daysAgo: 6, tags: '#gift', note: 'Birthday card cash gift'),
 
-        // Housing & Fixed Bills
-        (title: 'Downtown Apartment Monthly Lease', amount: 1350.0, type: 'expense', cat: 'Housing & Rent', acc: bankAccId, daysAgo: 24, tags: '#rent,#essential', note: 'Monthly apartment rent transfer'),
-        (title: 'High-speed Fiber Internet (1Gbps)', amount: 70.0, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 15, tags: '#bills', note: 'Home broadband connection'),
-        (title: 'Clean Energy Electric Utility', amount: 85.40, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 10, tags: '#utilities', note: 'Monthly electricity consumption'),
-        (title: 'Unlimited 5G Mobile Plan', amount: 45.0, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 8, tags: '#bills', note: 'Carrier phone bill'),
+        // Fixed Living & Utilities
+        (title: 'Downtown Apartment Monthly Rent', amount: 1350.0, type: 'expense', cat: 'Housing & Rent', acc: bankAccId, daysAgo: 3, tags: '#rent,#essential', note: 'Monthly apartment lease payment'),
+        (title: 'Gigabit Fiber Home Broadband', amount: 70.0, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 8, tags: '#bills', note: 'Home 1Gbps internet'),
+        (title: 'Clean Energy Electric Utility', amount: 88.50, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 10, tags: '#utilities', note: 'Monthly electricity bill'),
+        (title: 'Unlimited 5G Mobile Plan', amount: 45.0, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 14, tags: '#bills', note: 'Monthly cellular plan'),
 
-        // Groceries & Food
-        (title: 'Whole Foods Market Weekly Stockup', amount: 142.60, type: 'expense', cat: 'Groceries', acc: creditAccId, daysAgo: 2, tags: '#groceries', note: 'Organic fruits, vegetables, olive oil & chicken'),
-        (title: "Trader Joe's Healthy Snacks & Bakery", amount: 58.30, type: 'expense', cat: 'Groceries', acc: creditAccId, daysAgo: 7, tags: '#groceries', note: 'Almond butter, trail mix, sourdough bread'),
-        (title: 'Local Artisan French Bakery', amount: 14.20, type: 'expense', cat: 'Groceries', acc: cashAccId, daysAgo: 1, tags: '#bakery', note: 'Croissants and fresh baguette'),
-        (title: 'Artisan Espresso & Morning Pastry', amount: 7.50, type: 'expense', cat: 'Food & Dining', acc: cashAccId, daysAgo: 0, tags: '#coffee,#lifestyle', note: 'Morning caffeine boost'),
-        (title: 'Chipotle Burrito Bowl & Guacamole', amount: 15.80, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 1, tags: '#dining', note: 'Quick lunch break'),
-        (title: 'Italian Trattoria Dinner with Friends', amount: 68.00, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 4, tags: '#dining,#social', note: 'Woodfired pizza, pasta & wine'),
-        (title: 'Downtown Sushi Omakase Lunch', amount: 84.50, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 14, tags: '#dining', note: 'Business lunch meeting'),
+        // Current Month Groceries (~$340 spent of $450 limit)
+        (title: 'Whole Foods Market Weekly Stockup', amount: 142.60, type: 'expense', cat: 'Groceries', acc: creditAccId, daysAgo: 2, tags: '#groceries', note: 'Organic fruits, salmon, olive oil & veggies'),
+        (title: "Trader Joe's Healthy Snacks & Bakery", amount: 68.30, type: 'expense', cat: 'Groceries', acc: creditAccId, daysAgo: 9, tags: '#groceries', note: 'Almond butter, sourdough bread & trail mix'),
+        (title: 'Local Farmers Market Organic Produce', amount: 34.50, type: 'expense', cat: 'Groceries', acc: cashAccId, daysAgo: 16, tags: '#organic', note: 'Fresh berries, avocados & honey'),
+        (title: 'Artisan French Bakery Croissants', amount: 14.20, type: 'expense', cat: 'Groceries', acc: cashAccId, daysAgo: 1, tags: '#bakery', note: 'Morning pastries and baguette'),
 
-        // Transportation
-        (title: 'Shell Gasoline Full Tank Refill', amount: 52.00, type: 'expense', cat: 'Transportation', acc: creditAccId, daysAgo: 3, tags: '#car,#fuel', note: 'Premium unleaded fuel'),
-        (title: 'City Metro Transit Monthly Card', amount: 90.00, type: 'expense', cat: 'Transportation', acc: bankAccId, daysAgo: 20, tags: '#commute', note: 'Public transit subway pass'),
-        (title: 'Uber Ride to Airport Terminal', amount: 34.50, type: 'expense', cat: 'Transportation', acc: creditAccId, daysAgo: 9, tags: '#travel,#taxi', note: 'Early morning airport transfer'),
+        // Current Month Dining (~$322 spent of $350 limit - Warning Orange)
+        (title: 'Downtown Italian Trattoria Dinner', amount: 68.00, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 4, tags: '#dining,#social', note: 'Woodfired pizza and pasta with friends'),
+        (title: 'Tokyo Sushi Omakase Lunch', amount: 84.50, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 14, tags: '#dining', note: 'Business sushi lunch meeting'),
+        (title: 'Chipotle Burrito Bowl & Guacamole', amount: 15.80, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 7, tags: '#dining', note: 'Quick team lunch'),
+        (title: 'Sweetgreen Warm Harvest Bowl', amount: 16.50, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 11, tags: '#healthy', note: 'Nutritious lunch bowl'),
+        (title: 'Artisan Pour-Over & Pastry', amount: 7.50, type: 'expense', cat: 'Food & Dining', acc: cashAccId, daysAgo: 0, tags: '#coffee', note: 'Morning single-origin coffee'),
+        (title: 'Blue Bottle Espresso & Cookie', amount: 6.80, type: 'expense', cat: 'Food & Dining', acc: cashAccId, daysAgo: 5, tags: '#coffee', note: 'Afternoon coffee break'),
 
-        // Entertainment & Shopping
-        (title: 'IMAX Cinema Tickets & Popcorn Combo', amount: 38.00, type: 'expense', cat: 'Entertainment', acc: creditAccId, daysAgo: 5, tags: '#entertainment,#movies', note: 'Sci-fi movie premiere night'),
-        (title: 'Steam Games Summer Showcase Bundle', amount: 49.99, type: 'expense', cat: 'Entertainment', acc: creditAccId, daysAgo: 16, tags: '#gaming', note: 'Indie game package'),
-        (title: 'Nike Pegasus Running Shoes', amount: 110.00, type: 'expense', cat: 'Shopping', acc: creditAccId, daysAgo: 11, tags: '#fitness,#shopping', note: 'Marathon training footwear'),
-        (title: 'UNIQLO Merino Wool Knit Sweater', amount: 49.90, type: 'expense', cat: 'Shopping', acc: creditAccId, daysAgo: 19, tags: '#clothes', note: 'Autumn wardrobe staple'),
-        (title: 'Amazon Ergonomic Vertical Mouse', amount: 65.00, type: 'expense', cat: 'Shopping', acc: creditAccId, daysAgo: 13, tags: '#work,#office', note: 'Home desk ergonomic upgrade'),
+        // Current Month Shopping (~$270 spent of $250 limit - Over Budget Red)
+        (title: 'Nike Pegasus Marathon Running Shoes', amount: 120.00, type: 'expense', cat: 'Shopping', acc: creditAccId, daysAgo: 6, tags: '#fitness,#shoes', note: 'Running shoes replacement'),
+        (title: 'Amazon Ergonomic Vertical Mouse', amount: 65.00, type: 'expense', cat: 'Shopping', acc: creditAccId, daysAgo: 13, tags: '#work,#office', note: 'Desk ergonomic upgrade'),
+        (title: 'UNIQLO Supima Cotton Essentials', amount: 48.90, type: 'expense', cat: 'Shopping', acc: creditAccId, daysAgo: 17, tags: '#clothes', note: 'Wardrobe tees and socks'),
+        (title: 'Kindle Fiction Bestseller Haul', amount: 36.50, type: 'expense', cat: 'Shopping', acc: creditAccId, daysAgo: 22, tags: '#books', note: 'New sci-fi novel releases'),
 
-        // Health, Personal & Education
-        (title: 'CVS Pharmacy Vitamins & Cold Relief', amount: 28.75, type: 'expense', cat: 'Health & Medical', acc: creditAccId, daysAgo: 6, tags: '#health', note: 'Multivitamins & zinc tablets'),
-        (title: 'Routine Dental Hygiene Checkup', amount: 75.00, type: 'expense', cat: 'Health & Medical', acc: bankAccId, daysAgo: 21, tags: '#health,#dental', note: 'Annual preventative dental cleaning'),
-        (title: 'Udemy Mobile Architecture Masterclass', amount: 19.99, type: 'expense', cat: 'Education', acc: creditAccId, daysAgo: 17, tags: '#learning,#education', note: 'Online development course'),
-        (title: 'Gentlemen Barbershop Haircut & Styling', amount: 35.00, type: 'expense', cat: 'Personal Care', acc: cashAccId, daysAgo: 2, tags: '#grooming', note: 'Haircut and beard trim'),
+        // Current Month Transportation (~$90 spent of $200 limit)
+        (title: 'Shell Gasoline Premium Refill', amount: 54.00, type: 'expense', cat: 'Transportation', acc: creditAccId, daysAgo: 3, tags: '#car,#fuel', note: 'Full tank fuel'),
+        (title: 'Uber Airport Terminal Ride', amount: 36.50, type: 'expense', cat: 'Transportation', acc: creditAccId, daysAgo: 19, tags: '#travel,#taxi', note: 'Early morning flight transfer'),
+
+        // Current Month Entertainment & Health
+        (title: 'IMAX Cinema 3D Tickets & Snacks', amount: 38.00, type: 'expense', cat: 'Entertainment', acc: creditAccId, daysAgo: 8, tags: '#movies', note: 'Weekend cinema screening'),
+        (title: 'Steam Games Indie Showcase Bundle', amount: 49.99, type: 'expense', cat: 'Entertainment', acc: creditAccId, daysAgo: 21, tags: '#gaming', note: 'Indie game download'),
+        (title: 'CVS Pharmacy Vitamins & Zinc', amount: 28.75, type: 'expense', cat: 'Health & Medical', acc: creditAccId, daysAgo: 15, tags: '#health', note: 'Cold defense vitamins'),
+        (title: 'Gentlemen Barbershop Haircut', amount: 35.00, type: 'expense', cat: 'Personal Care', acc: cashAccId, daysAgo: 4, tags: '#grooming', note: 'Haircut and styling'),
+
+        // ================= MONTH 1 (Last Month: 30 - 58 days ago) =================
+        (title: 'Tech Lead Monthly Salary', amount: 4500.0, type: 'income', cat: 'Salary', acc: bankAccId, daysAgo: 35, tags: '#work,#salary', note: 'Direct deposit paycheck'),
+        (title: 'E-commerce UI/UX Audit Payout', amount: 950.0, type: 'income', cat: 'Freelance & Projects', acc: bankAccId, daysAgo: 42, tags: '#freelance', note: 'Contract design audit completion'),
+        (title: 'Downtown Apartment Monthly Rent', amount: 1350.0, type: 'expense', cat: 'Housing & Rent', acc: bankAccId, daysAgo: 33, tags: '#rent', note: 'Monthly lease transfer'),
+        (title: 'Gigabit Fiber Home Broadband', amount: 70.0, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 38, tags: '#bills', note: 'Monthly internet'),
+        (title: 'Clean Energy Electric Utility', amount: 104.20, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 40, tags: '#utilities', note: 'Summer air conditioning bill'),
+        (title: 'Unlimited 5G Mobile Plan', amount: 45.0, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 44, tags: '#bills', note: 'Monthly carrier invoice'),
+        (title: 'City Metro Transit Monthly Card', amount: 90.0, type: 'expense', cat: 'Transportation', acc: bankAccId, daysAgo: 50, tags: '#commute', note: 'Subway pass'),
+        (title: 'Whole Foods Market Stockup', amount: 155.40, type: 'expense', cat: 'Groceries', acc: creditAccId, daysAgo: 32, tags: '#groceries', note: 'Bi-weekly groceries haul'),
+        (title: "Trader Joe's Essentials Haul", amount: 74.20, type: 'expense', cat: 'Groceries', acc: creditAccId, daysAgo: 39, tags: '#groceries', note: 'Pantry restocking'),
+        (title: 'Spanish Tapas Dinner with Team', amount: 78.00, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 36, tags: '#dining', note: 'Sangria and tapas'),
+        (title: 'Ramen Craft House Dinner', amount: 24.50, type: 'expense', cat: 'Food & Dining', acc: cashAccId, daysAgo: 41, tags: '#dining', note: 'Tonkotsu ramen bowl'),
+        (title: 'Shell Gasoline Fuel Refill', amount: 51.00, type: 'expense', cat: 'Transportation', acc: creditAccId, daysAgo: 34, tags: '#fuel', note: 'Premium gasoline'),
+        (title: 'Routine Dental Hygiene Checkup', amount: 75.00, type: 'expense', cat: 'Health & Medical', acc: bankAccId, daysAgo: 52, tags: '#dental', note: 'Preventative cleaning'),
+        (title: 'Anker Multi-Device Fast Charger', amount: 55.00, type: 'expense', cat: 'Shopping', acc: creditAccId, daysAgo: 47, tags: '#tech', note: '65W GaN travel adapter'),
+        (title: 'Live Jazz Club Music Tickets', amount: 45.00, type: 'expense', cat: 'Entertainment', acc: creditAccId, daysAgo: 43, tags: '#music', note: 'Evening jazz performance'),
+
+        // ================= MONTH 2 (Two Months Ago: 60 - 88 days ago) =================
+        (title: 'Tech Lead Monthly Salary', amount: 4500.0, type: 'income', cat: 'Salary', acc: bankAccId, daysAgo: 65, tags: '#work,#salary', note: 'Direct deposit paycheck'),
+        (title: 'Flutter Performance Optimization Contract', amount: 1400.0, type: 'income', cat: 'Freelance & Projects', acc: bankAccId, daysAgo: 74, tags: '#freelance', note: 'App architecture consulting invoice'),
+        (title: 'Quarterly Tech ETF Dividends', amount: 210.50, type: 'income', cat: 'Investments & Dividends', acc: savingsAccId, daysAgo: 80, tags: '#investments', note: 'Brokerage dividend payout'),
+        (title: 'Downtown Apartment Monthly Rent', amount: 1350.0, type: 'expense', cat: 'Housing & Rent', acc: bankAccId, daysAgo: 63, tags: '#rent', note: 'Monthly lease transfer'),
+        (title: 'Gigabit Fiber Home Broadband', amount: 70.0, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 68, tags: '#bills', note: 'Monthly internet'),
+        (title: 'Clean Energy Electric Utility', amount: 92.00, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 70, tags: '#utilities', note: 'Electricity invoice'),
+        (title: 'Unlimited 5G Mobile Plan', amount: 45.0, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 74, tags: '#bills', note: 'Carrier invoice'),
+        (title: 'City Metro Transit Monthly Card', amount: 90.0, type: 'expense', cat: 'Transportation', acc: bankAccId, daysAgo: 80, tags: '#commute', note: 'Subway pass'),
+        (title: 'Costco Wholesale Grocery Run', amount: 168.00, type: 'expense', cat: 'Groceries', acc: creditAccId, daysAgo: 62, tags: '#groceries', note: 'Bulk meats and household items'),
+        (title: 'Whole Foods Market Pantry Restock', amount: 122.50, type: 'expense', cat: 'Groceries', acc: creditAccId, daysAgo: 69, tags: '#groceries', note: 'Weekly healthy haul'),
+        (title: 'Artisan Coffee Roasters Beans 1kg', amount: 28.00, type: 'expense', cat: 'Food & Dining', acc: cashAccId, daysAgo: 66, tags: '#coffee', note: 'Ethiopian specialty beans'),
+        (title: 'Korean BBQ Dinner with Friends', amount: 82.00, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 72, tags: '#dining', note: 'Team celebratory dinner'),
+        (title: 'Shell Gasoline Fuel Refill', amount: 53.50, type: 'expense', cat: 'Transportation', acc: creditAccId, daysAgo: 64, tags: '#fuel', note: 'Gasoline top-up'),
+        (title: 'Udemy Mobile Architecture Masterclass', amount: 19.99, type: 'expense', cat: 'Education', acc: creditAccId, daysAgo: 77, tags: '#learning', note: 'Architecture online course'),
+        (title: 'Patagonia Outdoor Fleece Jacket', amount: 139.00, type: 'expense', cat: 'Shopping', acc: creditAccId, daysAgo: 82, tags: '#clothes', note: 'Hiking layer'),
+
+        // ================= MONTH 3 (Three Months Ago: 90 - 118 days ago) =================
+        (title: 'Tech Lead Monthly Salary', amount: 4500.0, type: 'income', cat: 'Salary', acc: bankAccId, daysAgo: 95, tags: '#work,#salary', note: 'Direct deposit paycheck'),
+        (title: 'Brand Identity & Logo Design Gig', amount: 800.0, type: 'income', cat: 'Freelance & Projects', acc: bankAccId, daysAgo: 104, tags: '#freelance', note: 'Design deliverables package'),
+        (title: 'Downtown Apartment Monthly Rent', amount: 1350.0, type: 'expense', cat: 'Housing & Rent', acc: bankAccId, daysAgo: 93, tags: '#rent', note: 'Monthly rent'),
+        (title: 'Gigabit Fiber Home Broadband', amount: 70.0, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 98, tags: '#bills', note: 'Internet subscription'),
+        (title: 'Clean Energy Electric Utility', amount: 81.40, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 100, tags: '#utilities', note: 'Electric utility bill'),
+        (title: 'Unlimited 5G Mobile Plan', amount: 45.0, type: 'expense', cat: 'Bills & Utilities', acc: bankAccId, daysAgo: 104, tags: '#bills', note: 'Cellular invoice'),
+        (title: 'City Metro Transit Monthly Card', amount: 90.0, type: 'expense', cat: 'Transportation', acc: bankAccId, daysAgo: 110, tags: '#commute', note: 'Subway pass'),
+        (title: 'Whole Foods Market Spring Haul', amount: 145.00, type: 'expense', cat: 'Groceries', acc: creditAccId, daysAgo: 92, tags: '#groceries', note: 'Groceries restocking'),
+        (title: "Trader Joe's Weekly Snacks", amount: 62.00, type: 'expense', cat: 'Groceries', acc: creditAccId, daysAgo: 99, tags: '#groceries', note: 'Snacks and frozen goods'),
+        (title: 'Mexican Street Tacos & Horchata', amount: 21.00, type: 'expense', cat: 'Food & Dining', acc: cashAccId, daysAgo: 94, tags: '#dining', note: 'Quick lunch'),
+        (title: 'French Bistro Wine & Steak Dinner', amount: 89.00, type: 'expense', cat: 'Food & Dining', acc: creditAccId, daysAgo: 102, tags: '#dining', note: 'Anniversary dinner'),
+        (title: 'Shell Gasoline Fuel Refill', amount: 50.00, type: 'expense', cat: 'Transportation', acc: creditAccId, daysAgo: 96, tags: '#fuel', note: 'Fuel refill'),
+        (title: 'Museum of Modern Art Exhibition', amount: 25.00, type: 'expense', cat: 'Entertainment', acc: creditAccId, daysAgo: 107, tags: '#museum', note: 'Art gallery tickets'),
       ];
 
       for (final item in sampleTxs) {
         final categoryId = catMap[item.cat];
+        final txDate = now.subtract(Duration(days: item.daysAgo));
         await _db.into(_db.transactions).insert(
               TransactionsCompanion.insert(
                 id: uuid.v4(),
@@ -1032,31 +1090,72 @@ class BackupRestoreService {
                 type: item.type,
                 categoryId: Value(categoryId),
                 accountId: item.acc,
-                date: Value(now.subtract(Duration(days: item.daysAgo))),
+                date: Value(txDate),
                 tags: Value(item.tags),
                 note: Value(item.note),
                 isSplit: const Value(false),
-                createdAt: Value(now.subtract(Duration(days: item.daysAgo))),
+                createdAt: Value(txDate),
               ),
             );
       }
 
-      // 6. Insert Multiple Itemized Split Transactions
-      final splitTx1Id = uuid.v4();
+      // 6. Insert Realistic Account Transfers (Savings deposits, ATM withdrawals, CC payoffs)
+      final sampleTransfers = [
+        // Monthly Auto-Savings transfers ($500/mo into High-Yield Savings)
+        (title: 'Monthly Auto-Transfer to Savings', amount: 500.0, fromAcc: bankAccId, toAcc: savingsAccId, daysAgo: 4, note: 'Paycheck savings allocation'),
+        (title: 'Monthly Auto-Transfer to Savings', amount: 500.0, fromAcc: bankAccId, toAcc: savingsAccId, daysAgo: 34, note: 'Paycheck savings allocation'),
+        (title: 'Monthly Auto-Transfer to Savings', amount: 500.0, fromAcc: bankAccId, toAcc: savingsAccId, daysAgo: 64, note: 'Paycheck savings allocation'),
+        (title: 'Monthly Auto-Transfer to Savings', amount: 500.0, fromAcc: bankAccId, toAcc: savingsAccId, daysAgo: 94, note: 'Paycheck savings allocation'),
+
+        // ATM Cash withdrawals to Cash Wallet
+        (title: 'ATM Cash Withdrawal for Weekend', amount: 150.0, fromAcc: bankAccId, toAcc: cashAccId, daysAgo: 2, note: 'Branch ATM cash dispense'),
+        (title: 'ATM Cash Withdrawal', amount: 120.0, fromAcc: bankAccId, toAcc: cashAccId, daysAgo: 22, note: 'Branch ATM cash dispense'),
+        (title: 'ATM Cash Withdrawal', amount: 150.0, fromAcc: bankAccId, toAcc: cashAccId, daysAgo: 48, note: 'Branch ATM cash dispense'),
+        (title: 'ATM Cash Withdrawal', amount: 100.0, fromAcc: bankAccId, toAcc: cashAccId, daysAgo: 78, note: 'Branch ATM cash dispense'),
+
+        // Credit Card Balance Payments
+        (title: 'Credit Card Auto-Pay Statement', amount: 640.0, fromAcc: bankAccId, toAcc: creditAccId, daysAgo: 28, note: 'Statement balance paid in full'),
+        (title: 'Credit Card Auto-Pay Statement', amount: 580.0, fromAcc: bankAccId, toAcc: creditAccId, daysAgo: 58, note: 'Statement balance paid in full'),
+        (title: 'Credit Card Auto-Pay Statement', amount: 720.0, fromAcc: bankAccId, toAcc: creditAccId, daysAgo: 88, note: 'Statement balance paid in full'),
+        (title: 'Credit Card Auto-Pay Statement', amount: 510.0, fromAcc: bankAccId, toAcc: creditAccId, daysAgo: 118, note: 'Statement balance paid in full'),
+      ];
+
+      for (final t in sampleTransfers) {
+        final tDate = now.subtract(Duration(days: t.daysAgo));
+        await _db.into(_db.transactions).insert(
+              TransactionsCompanion.insert(
+                id: uuid.v4(),
+                title: t.title,
+                amount: t.amount,
+                type: 'transfer',
+                accountId: t.fromAcc,
+                toAccountId: Value(t.toAcc),
+                date: Value(tDate),
+                note: Value(t.note),
+                tags: const Value('#transfer'),
+                isSplit: const Value(false),
+                createdAt: Value(tDate),
+              ),
+            );
+      }
+
+      // 7. Insert 5 Itemized Split Transactions
       final groceriesCatId = catMap['Groceries'];
       final diningCatId = catMap['Food & Dining'];
       final utilitiesCatId = catMap['Bills & Utilities'];
       final healthCatId = catMap['Health & Medical'];
       final transportCatId = catMap['Transportation'];
       final entertainmentCatId = catMap['Entertainment'];
+      final shoppingCatId = catMap['Shopping'];
+      final personalCareCatId = catMap['Personal Care'];
 
-
-      // Split 1: Costco Superstore ($185.00)
+      // Split 1: Costco Wholesale Haul ($195.00)
+      final splitTx1Id = uuid.v4();
       await _db.into(_db.transactions).insert(
             TransactionsCompanion.insert(
               id: splitTx1Id,
               title: 'Costco Wholesale Club Superstore',
-              amount: 185.0,
+              amount: 195.0,
               type: 'expense',
               accountId: creditAccId,
               isSplit: const Value(true),
@@ -1065,15 +1164,14 @@ class BackupRestoreService {
               note: const Value('Monthly Costco household and groceries haul'),
             ),
           );
-
       if (groceriesCatId != null) {
         await _db.into(_db.transactionSplits).insert(
               TransactionSplitsCompanion.insert(
                 id: uuid.v4(),
                 transactionId: splitTx1Id,
                 categoryId: groceriesCatId,
-                amount: 115.0,
-                note: const Value('Pantry staples, organic eggs, salmon & berries'),
+                amount: 120.0,
+                note: const Value('Bulk organic chicken, berries, eggs & olive oil'),
               ),
             );
       }
@@ -1083,8 +1181,8 @@ class BackupRestoreService {
                 id: uuid.v4(),
                 transactionId: splitTx1Id,
                 categoryId: utilitiesCatId,
-                amount: 45.0,
-                note: const Value('Bulk laundry detergent & paper towels'),
+                amount: 50.0,
+                note: const Value('Paper towels, trash bags & dish detergent'),
               ),
             );
       }
@@ -1095,34 +1193,82 @@ class BackupRestoreService {
                 transactionId: splitTx1Id,
                 categoryId: healthCatId,
                 amount: 25.0,
-                note: const Value('Electrolyte powder & multivitamin gummies'),
+                note: const Value('Electrolyte hydration packets & vitamins'),
               ),
             );
       }
 
-      // Split 2: Weekend Mountain Trip Split ($240.00)
+      // Split 2: Target Superstore Haul ($142.50)
       final splitTx2Id = uuid.v4();
       await _db.into(_db.transactions).insert(
             TransactionsCompanion.insert(
               id: splitTx2Id,
-              title: 'Weekend Mountain Cabin Getaway',
-              amount: 240.0,
+              title: 'Target Superstore Weekend Run',
+              amount: 142.50,
               type: 'expense',
               accountId: creditAccId,
               isSplit: const Value(true),
-              date: Value(now.subtract(const Duration(days: 15))),
-              tags: const Value('#vacation,#trip'),
-              note: const Value('Cabin rental expenses shared with friends'),
+              date: Value(now.subtract(const Duration(days: 11))),
+              tags: const Value('#target,#supplies'),
+              note: const Value('Weekly essentials & home goods'),
             ),
           );
-
-      if (transportCatId != null) {
+      if (groceriesCatId != null) {
         await _db.into(_db.transactionSplits).insert(
               TransactionSplitsCompanion.insert(
                 id: uuid.v4(),
                 transactionId: splitTx2Id,
+                categoryId: groceriesCatId,
+                amount: 65.0,
+                note: const Value('Snacks, oat milk & cereal'),
+              ),
+            );
+      }
+      if (personalCareCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTx2Id,
+                categoryId: personalCareCatId,
+                amount: 35.0,
+                note: const Value('Shampoo, moisturizer & dental floss'),
+              ),
+            );
+      }
+      if (shoppingCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTx2Id,
+                categoryId: shoppingCatId,
+                amount: 42.50,
+                note: const Value('Fleece blanket & kitchen hand towels'),
+              ),
+            );
+      }
+
+      // Split 3: Weekend Mountain Cabin Getaway ($260.00)
+      final splitTx3Id = uuid.v4();
+      await _db.into(_db.transactions).insert(
+            TransactionsCompanion.insert(
+              id: splitTx3Id,
+              title: 'Weekend Mountain Cabin Getaway',
+              amount: 260.0,
+              type: 'expense',
+              accountId: creditAccId,
+              isSplit: const Value(true),
+              date: Value(now.subtract(const Duration(days: 25))),
+              tags: const Value('#vacation,#trip'),
+              note: const Value('Mountain trip expenses shared with friends'),
+            ),
+          );
+      if (transportCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTx3Id,
                 categoryId: transportCatId,
-                amount: 70.0,
+                amount: 80.0,
                 note: const Value('Highway toll passes & SUV fuel'),
               ),
             );
@@ -1131,10 +1277,10 @@ class BackupRestoreService {
         await _db.into(_db.transactionSplits).insert(
               TransactionSplitsCompanion.insert(
                 id: uuid.v4(),
-                transactionId: splitTx2Id,
+                transactionId: splitTx3Id,
                 categoryId: diningCatId,
-                amount: 120.0,
-                note: const Value('Group BBQ cookout & rustic pub dinner'),
+                amount: 130.0,
+                note: const Value('Group BBQ steak cookout & rustic pub dinner'),
               ),
             );
       }
@@ -1142,37 +1288,112 @@ class BackupRestoreService {
         await _db.into(_db.transactionSplits).insert(
               TransactionSplitsCompanion.insert(
                 id: uuid.v4(),
-                transactionId: splitTx2Id,
+                transactionId: splitTx3Id,
                 categoryId: entertainmentCatId,
                 amount: 50.0,
-                note: const Value('National park trail admission & boat rental'),
+                note: const Value('National park trail passes & canoe rental'),
               ),
             );
       }
 
-      // 7. Insert Realistic Financial Goals
+      // Split 4: Team Celebration Dinner ($175.00)
+      final splitTx4Id = uuid.v4();
+      await _db.into(_db.transactions).insert(
+            TransactionsCompanion.insert(
+              id: splitTx4Id,
+              title: 'Team Product Launch Celebration',
+              amount: 175.0,
+              type: 'expense',
+              accountId: creditAccId,
+              isSplit: const Value(true),
+              date: Value(now.subtract(const Duration(days: 55))),
+              tags: const Value('#celebration,#dinner'),
+              note: const Value('Milestone launch dinner'),
+            ),
+          );
+      if (diningCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTx4Id,
+                categoryId: diningCatId,
+                amount: 145.0,
+                note: const Value('Tasting menu & wine pairings'),
+              ),
+            );
+      }
+      if (entertainmentCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTx4Id,
+                categoryId: entertainmentCatId,
+                amount: 30.0,
+                note: const Value('Arcade games & pool table tokens'),
+              ),
+            );
+      }
+
+      // Split 5: Home Office Setup Overhaul ($320.00)
+      final splitTx5Id = uuid.v4();
+      await _db.into(_db.transactions).insert(
+            TransactionsCompanion.insert(
+              id: splitTx5Id,
+              title: 'Home Office Ergonomic Overhaul',
+              amount: 320.0,
+              type: 'expense',
+              accountId: creditAccId,
+              isSplit: const Value(true),
+              date: Value(now.subtract(const Duration(days: 85))),
+              tags: const Value('#office,#wfh'),
+              note: const Value('Workstation refresh equipment'),
+            ),
+          );
+      if (shoppingCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTx5Id,
+                categoryId: shoppingCatId,
+                amount: 250.0,
+                note: const Value('Dual monitor arm & mechanical keyboard'),
+              ),
+            );
+      }
+      if (utilitiesCatId != null) {
+        await _db.into(_db.transactionSplits).insert(
+              TransactionSplitsCompanion.insert(
+                id: uuid.v4(),
+                transactionId: splitTx5Id,
+                categoryId: utilitiesCatId,
+                amount: 70.0,
+                note: const Value('Surge protector & cable management spine'),
+              ),
+            );
+      }
+
+      // 8. Insert Realistic Financial Goals (with complete deposit histories)
       final emergencyGoalId = uuid.v4();
       await _db.into(_db.goals).insert(
             GoalsCompanion.insert(
               id: emergencyGoalId,
               name: '🛡️ Emergency Reserve (6 Mo)',
               targetAmount: 10000.0,
-              currentAmount: const Value(6850.0),
+              currentAmount: const Value(7200.0),
               iconName: const Value('savings'),
               colorValue: const Value(0xFF10B981), // Emerald
               targetDate: Value(now.add(const Duration(days: 180))),
-              notes: const Value('Dedicated safety buffer in high-yield account'),
+              notes: const Value('6 months safety buffer in high-yield account'),
             ),
           );
-
       await _db.into(_db.goalTransactions).insert(
             GoalTransactionsCompanion.insert(
               id: uuid.v4(),
               goalId: emergencyGoalId,
               type: 'deposit',
               amount: 5000.0,
-              date: Value(now.subtract(const Duration(days: 45))),
-              notes: const Value('Initial emergency fund transfer from old bank'),
+              date: Value(now.subtract(const Duration(days: 90))),
+              notes: const Value('Initial emergency fund seed from tax refund'),
             ),
           );
       await _db.into(_db.goalTransactions).insert(
@@ -1180,26 +1401,46 @@ class BackupRestoreService {
               id: uuid.v4(),
               goalId: emergencyGoalId,
               type: 'deposit',
-              amount: 1850.0,
+              amount: 1200.0,
+              date: Value(now.subtract(const Duration(days: 45))),
+              notes: const Value('Quarterly freelance bonus deposit'),
+            ),
+          );
+      await _db.into(_db.goalTransactions).insert(
+            GoalTransactionsCompanion.insert(
+              id: uuid.v4(),
+              goalId: emergencyGoalId,
+              type: 'deposit',
+              amount: 1000.0,
               date: Value(now.subtract(const Duration(days: 15))),
-              notes: const Value('Quarterly performance bonus deposit'),
+              notes: const Value('Monthly planned savings deposit'),
             ),
           );
 
+      // 100% Achieved Goal (Celebratory Status)
       final macGoalId = uuid.v4();
       await _db.into(_db.goals).insert(
             GoalsCompanion.insert(
               id: macGoalId,
-              name: '💻 MacBook Pro M3 Max',
-              targetAmount: 2499.0,
-              currentAmount: const Value(1800.0),
+              name: '💻 MacBook Pro M3 Workstation',
+              targetAmount: 2500.0,
+              currentAmount: const Value(2500.0),
               iconName: const Value('laptop'),
               colorValue: const Value(0xFF3B82F6), // Blue
-              targetDate: Value(now.add(const Duration(days: 60))),
-              notes: const Value('Workstation upgrade for development & design'),
+              targetDate: Value(now.subtract(const Duration(days: 5))),
+              notes: const Value('Goal achieved! Ready for purchase ✓'),
             ),
           );
-
+      await _db.into(_db.goalTransactions).insert(
+            GoalTransactionsCompanion.insert(
+              id: uuid.v4(),
+              goalId: macGoalId,
+              type: 'deposit',
+              amount: 1000.0,
+              date: Value(now.subtract(const Duration(days: 60))),
+              notes: const Value('Consulting project milestone deposit'),
+            ),
+          );
       await _db.into(_db.goalTransactions).insert(
             GoalTransactionsCompanion.insert(
               id: uuid.v4(),
@@ -1207,7 +1448,7 @@ class BackupRestoreService {
               type: 'deposit',
               amount: 1000.0,
               date: Value(now.subtract(const Duration(days: 30))),
-              notes: const Value('Freelance UI project payout'),
+              notes: const Value('Monthly savings allocation'),
             ),
           );
       await _db.into(_db.goalTransactions).insert(
@@ -1215,58 +1456,101 @@ class BackupRestoreService {
               id: uuid.v4(),
               goalId: macGoalId,
               type: 'deposit',
-              amount: 800.0,
-              date: Value(now.subtract(const Duration(days: 10))),
-              notes: const Value('Monthly tech fund allocation'),
+              amount: 500.0,
+              date: Value(now.subtract(const Duration(days: 5))),
+              notes: const Value('Final deposit to reach target! 🎉'),
             ),
           );
 
+      // Vacation Goal (47% saved)
+      final japanGoalId = uuid.v4();
       await _db.into(_db.goals).insert(
             GoalsCompanion.insert(
-              id: uuid.v4(),
+              id: japanGoalId,
               name: '✈️ Tokyo & Kyoto Autumn Trip',
               targetAmount: 3500.0,
-              currentAmount: const Value(1450.0),
+              currentAmount: const Value(1650.0),
               iconName: const Value('flight'),
               colorValue: const Value(0xFFEC4899), // Pink
               targetDate: Value(now.add(const Duration(days: 120))),
-              notes: const Value('Flights, hotels & Japan Rail pass'),
+              notes: const Value('Flights, hotels & Japan Rail pass fund'),
+            ),
+          );
+      await _db.into(_db.goalTransactions).insert(
+            GoalTransactionsCompanion.insert(
+              id: uuid.v4(),
+              goalId: japanGoalId,
+              type: 'deposit',
+              amount: 1000.0,
+              date: Value(now.subtract(const Duration(days: 50))),
+              notes: const Value('Flight ticket savings seed'),
+            ),
+          );
+      await _db.into(_db.goalTransactions).insert(
+            GoalTransactionsCompanion.insert(
+              id: uuid.v4(),
+              goalId: japanGoalId,
+              type: 'deposit',
+              amount: 650.0,
+              date: Value(now.subtract(const Duration(days: 20))),
+              notes: const Value('Hotel reservation deposit'),
             ),
           );
 
+      // EV Downpayment Goal (80% saved)
+      final evGoalId = uuid.v4();
       await _db.into(_db.goals).insert(
             GoalsCompanion.insert(
-              id: uuid.v4(),
+              id: evGoalId,
               name: '🚗 EV Vehicle Downpayment',
-              targetAmount: 5000.0,
+              targetAmount: 6000.0,
               currentAmount: const Value(4850.0),
               iconName: const Value('directions_car'),
               colorValue: const Value(0xFFF59E0B), // Amber
-              targetDate: Value(now.add(const Duration(days: 30))),
-              notes: const Value('Almost ready for order deposit'),
+              targetDate: Value(now.add(const Duration(days: 45))),
+              notes: const Value('Ready for vehicle order deposit'),
+            ),
+          );
+      await _db.into(_db.goalTransactions).insert(
+            GoalTransactionsCompanion.insert(
+              id: uuid.v4(),
+              goalId: evGoalId,
+              type: 'deposit',
+              amount: 3000.0,
+              date: Value(now.subtract(const Duration(days: 100))),
+              notes: const Value('Old car trade-in equity proceeds'),
+            ),
+          );
+      await _db.into(_db.goalTransactions).insert(
+            GoalTransactionsCompanion.insert(
+              id: uuid.v4(),
+              goalId: evGoalId,
+              type: 'deposit',
+              amount: 1850.0,
+              date: Value(now.subtract(const Duration(days: 25))),
+              notes: const Value('Bonus deposit allocation'),
             ),
           );
 
-      // 8. Insert Realistic Debts & IOUs
+      // 9. Insert Realistic Debts & Repayment Logs
       final alexDebtId = uuid.v4();
       await _db.into(_db.debts).insert(
             DebtsCompanion.insert(
               id: alexDebtId,
               personName: 'Alex Morgan',
-              amount: 120.0,
-              settledAmount: const Value(40.0),
+              amount: 150.0,
+              settledAmount: const Value(50.0),
               type: 'lent',
               date: Value(now.subtract(const Duration(days: 14))),
-              notes: const Value('Concert VIP tickets front booking'),
+              notes: const Value('Concert VIP tickets front payment'),
               dueDate: Value(now.add(const Duration(days: 7))),
             ),
           );
-
       await _db.into(_db.debtRepayments).insert(
             DebtRepaymentsCompanion.insert(
               id: uuid.v4(),
               debtId: alexDebtId,
-              amount: 40.0,
+              amount: 50.0,
               date: Value(now.subtract(const Duration(days: 4))),
               notes: const Value('First installment via Venmo'),
             ),
@@ -1279,7 +1563,7 @@ class BackupRestoreService {
               amount: 65.0,
               settledAmount: const Value(0.0),
               type: 'lent',
-              date: Value(now.subtract(const Duration(days: 5))),
+              date: Value(now.subtract(const Duration(days: 6))),
               notes: const Value('Team dinner bill coverage'),
               dueDate: Value(now.add(const Duration(days: 10))),
             ),
@@ -1292,64 +1576,64 @@ class BackupRestoreService {
               amount: 50.0,
               settledAmount: const Value(0.0),
               type: 'borrowed',
-              date: Value(now.subtract(const Duration(days: 2))),
+              date: Value(now.subtract(const Duration(days: 3))),
               notes: const Value('Weekend road trip fuel share'),
               dueDate: Value(now.add(const Duration(days: 14))),
             ),
           );
 
+      // Fully settled debt with history
       final emmaDebtId = uuid.v4();
       await _db.into(_db.debts).insert(
             DebtsCompanion.insert(
               id: emmaDebtId,
               personName: 'Emma Davis',
-              amount: 45.0,
-              settledAmount: const Value(45.0),
+              amount: 85.0,
+              settledAmount: const Value(85.0),
               isSettled: const Value(true),
               type: 'lent',
-              date: Value(now.subtract(const Duration(days: 20))),
+              date: Value(now.subtract(const Duration(days: 30))),
               notes: const Value('Book club supplies - fully repaid ✓'),
               dueDate: Value(now.subtract(const Duration(days: 5))),
             ),
           );
-
       await _db.into(_db.debtRepayments).insert(
             DebtRepaymentsCompanion.insert(
               id: uuid.v4(),
               debtId: emmaDebtId,
-              amount: 45.0,
+              amount: 85.0,
               date: Value(now.subtract(const Duration(days: 5))),
-              notes: const Value('Cash settlement in full'),
+              notes: const Value('Settled in full via bank transfer'),
             ),
           );
 
-      // 9. Insert Recurring Subscriptions & Scheduled Bills
+      // 10. Insert Recurring Subscriptions & Scheduled Bills
       if (entertainmentCatId != null) {
         await _db.into(_db.recurringTransactions).insert(
               RecurringTransactionsCompanion.insert(
                 id: uuid.v4(),
-                title: 'Netflix Premium 4K Ultra HD',
+                title: 'Netflix Premium 4K HDR',
                 amount: 22.99,
                 categoryId: entertainmentCatId,
                 accountId: bankAccId,
                 frequency: const Value('monthly'),
-                nextDueDate: now.add(const Duration(days: 3)),
+                nextDueDate: now.add(const Duration(days: 4)),
                 autoLog: const Value(true),
-                notes: const Value('Family 4-screen plan'),
+                notes: const Value('Family 4-screen streaming plan'),
               ),
             );
 
         await _db.into(_db.recurringTransactions).insert(
               RecurringTransactionsCompanion.insert(
                 id: uuid.v4(),
-                title: 'Spotify Family Premium',
+                title: 'Spotify Family Hi-Fi',
                 amount: 16.99,
                 categoryId: entertainmentCatId,
                 accountId: bankAccId,
                 frequency: const Value('monthly'),
-                nextDueDate: now.add(const Duration(days: 11)),
+                nextDueDate: now.add(const Duration(days: 12)),
                 autoLog: const Value(true),
-                notes: const Value('High fidelity music streaming'),
+                notes: const Value('Music streaming premium family'),
               ),
             );
       }
@@ -1363,23 +1647,23 @@ class BackupRestoreService {
                 categoryId: utilitiesCatId,
                 accountId: bankAccId,
                 frequency: const Value('monthly'),
-                nextDueDate: now.add(const Duration(days: 16)),
+                nextDueDate: now.add(const Duration(days: 15)),
                 autoLog: const Value(true),
-                notes: const Value('Home fiber connection'),
+                notes: const Value('Home fiber internet connection'),
               ),
             );
 
         await _db.into(_db.recurringTransactions).insert(
               RecurringTransactionsCompanion.insert(
                 id: uuid.v4(),
-                title: 'iCloud+ 2TB Family Storage',
+                title: 'iCloud+ 2TB Family Cloud',
                 amount: 9.99,
                 categoryId: utilitiesCatId,
                 accountId: bankAccId,
                 frequency: const Value('monthly'),
                 nextDueDate: now.add(const Duration(days: 8)),
                 autoLog: const Value(true),
-                notes: const Value('Cloud backup & Photo sync'),
+                notes: const Value('Apple cloud photo & device backup'),
               ),
             );
       }
@@ -1393,12 +1677,44 @@ class BackupRestoreService {
                 categoryId: healthCatId,
                 accountId: bankAccId,
                 frequency: const Value('monthly'),
-                nextDueDate: now.add(const Duration(days: 22)),
+                nextDueDate: now.add(const Duration(days: 20)),
                 autoLog: const Value(true),
-                notes: const Value('Gym & spa access membership'),
+                notes: const Value('Gym and spa access'),
               ),
             );
       }
+
+      // 11. Insert Soft-Deleted Items in Recycle Bin (for instant testability)
+      final deletedTxId = uuid.v4();
+      final deletedPayload = jsonEncode({
+        'transaction': {
+          'id': deletedTxId,
+          'title': 'Accidental Duplicate Coffee Charge',
+          'amount': 6.50,
+          'type': 'expense',
+          'categoryId': diningCatId,
+          'accountId': cashAccId,
+          'date': now.subtract(const Duration(days: 2)).toIso8601String(),
+          'note': 'Duplicate charge removed from ledger',
+          'tags': '#coffee,#duplicate',
+          'isSplit': false,
+          'createdAt': now.subtract(const Duration(days: 2)).toIso8601String(),
+        },
+        'splits': [],
+      });
+
+      await _db.into(_db.deletedItems).insert(
+            DeletedItemsCompanion.insert(
+              id: uuid.v4(),
+              entityId: deletedTxId,
+              entityType: 'transaction',
+              title: 'Accidental Duplicate Coffee Charge',
+              subtitle: const Value('Daily Cash Wallet • Food & Dining'),
+              amount: const Value(6.50),
+              payloadJson: deletedPayload,
+              deletedAt: Value(now.subtract(const Duration(hours: 4))),
+            ),
+          );
     });
   }
 }

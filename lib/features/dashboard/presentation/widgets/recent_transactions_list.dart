@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/providers/privacy_mask_provider.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -16,6 +15,7 @@ import '../../../transactions/data/transaction_repository.dart';
 import '../../../transactions/presentation/screens/add_transaction_sheet.dart';
 import '../../../transactions/presentation/widgets/power_search_bar.dart';
 import '../../../transactions/presentation/widgets/transaction_batch_action_bar.dart';
+import '../../../transactions/presentation/widgets/transaction_detail_sheet.dart';
 
 class RecentTransactionsList extends ConsumerStatefulWidget {
   const RecentTransactionsList({super.key});
@@ -63,222 +63,8 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
     });
   }
 
-  Future<void> _deleteTransactionWithUndo(BuildContext context, Transaction tx) async {
-    final repo = ref.read(transactionRepositoryProvider);
-    final snapshot = await repo.getTransactionSnapshot(tx.id);
-    await repo.deleteTransaction(tx.id);
-    if (context.mounted) {
-      Navigator.pop(context);
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.clearSnackBars();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Deleted "${tx.title}"'),
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'UNDO',
-            textColor: AppColors.income,
-            onPressed: () async {
-              if (snapshot != null) {
-                await repo.restoreTransactionSnapshot(snapshot);
-                messenger.clearSnackBars();
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text('✓ Restored "${tx.title}"'),
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              }
-            },
-          ),
-        ),
-      );
-    }
-  }
-
   void _showTransactionDetails(BuildContext context, TransactionWithDetails item) {
-    final tx = item.transaction;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isMasked = ref.read(privacyMaskProvider);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    CurrencyFormatter.format(tx.amount, mask: isMasked),
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: tx.type == 'income'
-                          ? AppColors.income
-                          : (tx.type == 'expense' ? AppColors.expense : AppColors.transfer),
-                    ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined, color: AppColors.primary),
-                        tooltip: 'Edit transaction',
-                        onPressed: () {
-                          Navigator.pop(context);
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            useSafeArea: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (_) => AddTransactionSheet(
-                              initialType: tx.type,
-                              transactionToEdit: tx,
-                              initialSplits: item.splits,
-                            ),
-                          );
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline_rounded, color: AppColors.expense),
-                        tooltip: 'Delete transaction',
-                        onPressed: () => _deleteTransactionWithUndo(context, tx),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '${DateFormat('EEEE, MMMM d, yyyy').format(tx.date)} • ${item.account.name}',
-                style: const TextStyle(color: Colors.grey, fontSize: 13),
-              ),
-              if (tx.note != null && tx.note!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text('Note: ${tx.note!}', style: const TextStyle(fontSize: 13)),
-              ],
-              if (tx.tags != null && tx.tags!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  children: tx.tags!.split(',').map((tag) {
-                    return Chip(
-                      label: Text('#${tag.trim()}', style: const TextStyle(fontSize: 11)),
-                      padding: EdgeInsets.zero,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    );
-                  }).toList(),
-                ),
-              ],
-              if (tx.isSplit && item.splits.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                const Text(
-                  'Itemized Category Splits:',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    children: item.splits.map((s) {
-                      final c = s.category;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            Icon(IconHelper.getIcon(c.icon), size: 16, color: Color(c.color)),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(c.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
-                            Text(
-                              CurrencyFormatter.format(s.split.amount, mask: isMasked),
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                      label: const Text('Delete'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.expense,
-                        side: const BorderSide(color: AppColors.expense),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => _deleteTransactionWithUndo(context, tx),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.edit_rounded, size: 18),
-                      label: const Text('Edit Transaction'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 0,
-                      ),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          useSafeArea: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (_) => AddTransactionSheet(
-                            initialType: tx.type,
-                            transactionToEdit: tx,
-                            initialSplits: item.splits,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 8),
-            ],
-          ),
-        );
-      },
-    );
+    TransactionDetailSheet.show(context, item);
   }
 
   @override
@@ -573,14 +359,28 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
                                         ],
                                       ),
                                       const SizedBox(height: 2),
-                                      Text(
-                                        '${item.account.name}${item.toAccount != null ? ' → ${item.toAccount!.name}' : ''}  •  ${DateFormat('MMM d').format(tx.date)}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                        ),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              '${item.account.name}${item.toAccount != null ? ' → ${item.toAccount!.name}' : ''}  •  ${DateFormat('MMM d').format(tx.date)}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                              ),
+                                            ),
+                                          ),
+                                          if (tx.receiptPath != null && tx.receiptPath!.isNotEmpty) ...[
+                                            const SizedBox(width: 4),
+                                            Icon(
+                                              Icons.receipt_outlined,
+                                              size: 13,
+                                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                     ],
                                   ),

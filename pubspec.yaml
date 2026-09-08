@@ -46,6 +46,8 @@ dependencies:
   path: ^1.9.1
   share_plus: ^10.1.4
   file_picker: ^8.1.7
+  image_picker: ^1.1.2
+  google_mlkit_text_recognition: ^0.14.0
   csv: ^6.0.0
 
   # Data Formats & Helpers

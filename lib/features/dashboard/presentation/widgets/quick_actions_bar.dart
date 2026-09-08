@@ -6,13 +6,16 @@ import '../../../transactions/presentation/screens/add_transaction_sheet.dart';
 class QuickActionsBar extends StatelessWidget {
   const QuickActionsBar({super.key});
 
-  void _openAddTransaction(BuildContext context, String initialType) {
+  void _openAddTransaction(BuildContext context, String initialType, {bool autoOpenScanner = false}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => AddTransactionSheet(initialType: initialType),
+      builder: (context) => AddTransactionSheet(
+        initialType: initialType,
+        autoOpenScanner: autoOpenScanner,
+      ),
     );
   }
 
@@ -28,7 +31,7 @@ class QuickActionsBar extends StatelessWidget {
             onTap: () => _openAddTransaction(context, 'expense'),
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
         Expanded(
           child: _ActionButton(
             label: 'Income',
@@ -37,7 +40,16 @@ class QuickActionsBar extends StatelessWidget {
             onTap: () => _openAddTransaction(context, 'income'),
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _ActionButton(
+            label: 'Scan',
+            icon: Icons.document_scanner_rounded,
+            color: AppColors.primary,
+            onTap: () => _openAddTransaction(context, 'expense', autoOpenScanner: true),
+          ),
+        ),
+        const SizedBox(width: 8),
         Expanded(
           child: _ActionButton(
             label: 'Transfer',

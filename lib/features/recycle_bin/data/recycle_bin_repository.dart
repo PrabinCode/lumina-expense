@@ -5,12 +5,14 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
+import '../../../core/services/receipt_storage_service.dart';
 
 class RecycleBinRepository {
   final AppDatabase _db;
+  final ReceiptStorageService? _receiptStorage;
   static const _uuid = Uuid();
 
-  RecycleBinRepository(this._db);
+  RecycleBinRepository(this._db, [this._receiptStorage]);
 
   /// Watch all soft-deleted items, optionally filtered by entityType
   Stream<List<DeletedItem>> watchDeletedItems({String? entityType}) {
@@ -263,6 +265,40 @@ class RecycleBinRepository {
     return recycleId;
   }
 
+  /// Soft-delete a category into Recycle Bin with mapping of affected transactions
+  Future<String> moveCategoryToRecycleBin(
+    Category category, {
+    List<String>? affectedTransactionIds,
+    String? reassignedToId,
+  }) async {
+    final recycleId = _uuid.v4();
+    final payload = {
+      'id': category.id,
+      'name': category.name,
+      'type': category.type,
+      'icon': category.icon,
+      'color': category.color,
+      'parentCategoryId': category.parentCategoryId,
+      'isDefault': category.isDefault,
+      'affectedTransactionIds': affectedTransactionIds ?? [],
+      'reassignedToId': reassignedToId,
+    };
+
+    await _db.into(_db.deletedItems).insert(
+          DeletedItemsCompanion.insert(
+            id: recycleId,
+            entityId: category.id,
+            entityType: 'category',
+            title: category.name,
+            subtitle: Value('${category.type == 'expense' ? 'Expense' : 'Income'} Category • ${affectedTransactionIds?.length ?? 0} txs'),
+            payloadJson: jsonEncode(payload),
+            deletedAt: Value(DateTime.now()),
+          ),
+        );
+
+    return recycleId;
+  }
+
   /// Restore an item from the Recycle Bin by its recycle ID
   Future<bool> restoreItem(String recycleId) async {
     final item = await (_db.select(_db.deletedItems)..where((t) => t.id.equals(recycleId))).getSingleOrNull();
@@ -377,6 +413,28 @@ class RecycleBinRepository {
                 mode: InsertMode.insertOrReplace,
               );
           break;
+
+        case 'category':
+          await _db.into(_db.categories).insert(
+                CategoriesCompanion.insert(
+                  id: data['id'],
+                  name: data['name'],
+                  type: data['type'],
+                  icon: Value(data['icon'] ?? 'category'),
+                  color: Value(data['color'] ?? 0xFF4CAF50),
+                  parentCategoryId: Value(data['parentCategoryId']),
+                  isDefault: Value(data['isDefault'] ?? false),
+                ),
+                mode: InsertMode.insertOrReplace,
+              );
+
+          // Restore categoryId on affected transactions if they were re-categorized
+          final affectedTxIds = (data['affectedTransactionIds'] as List? ?? []).cast<String>();
+          if (affectedTxIds.isNotEmpty) {
+            await (_db.update(_db.transactions)..where((t) => t.id.isIn(affectedTxIds)))
+                .write(TransactionsCompanion(categoryId: Value(data['id'])));
+          }
+          break;
       }
 
       await (_db.delete(_db.deletedItems)..where((t) => t.id.equals(recycleId))).go();
@@ -395,30 +453,58 @@ class RecycleBinRepository {
     return count;
   }
 
+  Future<void> _cleanupReceiptsForDeletedItems(List<DeletedItem> items) async {
+    if (_receiptStorage == null) return;
+    for (final item in items) {
+      if (item.entityType == 'transaction') {
+        try {
+          final decoded = jsonDecode(item.payloadJson) as Map<String, dynamic>;
+          final txData = decoded['transaction'] as Map<String, dynamic>?;
+          final receiptPath = txData?['receiptPath'] as String?;
+          if (receiptPath != null && receiptPath.isNotEmpty) {
+            await _receiptStorage.deleteReceiptFile(receiptPath);
+          }
+        } catch (_) {}
+      }
+    }
+  }
+
   /// Permanently delete an item from the Recycle Bin
-  Future<int> permanentlyDeleteItem(String recycleId) {
+  Future<int> permanentlyDeleteItem(String recycleId) async {
+    final items = await (_db.select(_db.deletedItems)..where((t) => t.id.equals(recycleId))).get();
+    await _cleanupReceiptsForDeletedItems(items);
     return (_db.delete(_db.deletedItems)..where((t) => t.id.equals(recycleId))).go();
   }
 
   /// Permanently delete multiple items
-  Future<int> permanentlyDeleteBatch(List<String> recycleIds) {
-    if (recycleIds.isEmpty) return Future.value(0);
+  Future<int> permanentlyDeleteBatch(List<String> recycleIds) async {
+    if (recycleIds.isEmpty) return 0;
+    final items = await (_db.select(_db.deletedItems)..where((t) => t.id.isIn(recycleIds))).get();
+    await _cleanupReceiptsForDeletedItems(items);
     return (_db.delete(_db.deletedItems)..where((t) => t.id.isIn(recycleIds))).go();
   }
 
   /// Empty all items (or by specific entityType)
-  Future<int> emptyRecycleBin({String? entityType}) {
-    final query = _db.delete(_db.deletedItems);
+  Future<int> emptyRecycleBin({String? entityType}) async {
+    final query = _db.select(_db.deletedItems);
     if (entityType != null && entityType.isNotEmpty && entityType != 'all') {
       query.where((t) => t.entityType.equals(entityType));
     }
-    return query.go();
+    final items = await query.get();
+    await _cleanupReceiptsForDeletedItems(items);
+
+    final delQuery = _db.delete(_db.deletedItems);
+    if (entityType != null && entityType.isNotEmpty && entityType != 'all') {
+      delQuery.where((t) => t.entityType.equals(entityType));
+    }
+    return delQuery.go();
   }
 }
 
 final recycleBinRepositoryProvider = Provider<RecycleBinRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return RecycleBinRepository(db);
+  final receiptStorage = ref.watch(receiptStorageServiceProvider);
+  return RecycleBinRepository(db, receiptStorage);
 });
 
 final deletedItemsStreamProvider = StreamProvider.family<List<DeletedItem>, String?>((ref, type) {
