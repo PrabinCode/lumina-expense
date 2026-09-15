@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:csv/csv.dart';
 import 'package:drift/drift.dart';
+import 'package:excel_plus/excel_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -259,6 +260,7 @@ class BackupRestoreService {
 
   /// Generate Backup JSON payload
   Future<Map<String, dynamic>> _buildBackupPayload() async {
+    final prefs = await SharedPreferences.getInstance();
     final accounts = await _db.select(_db.accounts).get();
     final categories = await _db.select(_db.categories).get();
     final transactions = await _db.select(_db.transactions).get();
@@ -271,9 +273,18 @@ class BackupRestoreService {
     final subscriptions = await _db.select(_db.recurringTransactions).get();
 
     return {
-      'version': 5,
+      'version': 6,
       'appName': 'LuminaExpense',
       'exportDate': DateTime.now().toIso8601String(),
+      'settings': {
+        'userProfileName': prefs.getString('user_profile_name'),
+        'userProfileEmail': prefs.getString('user_profile_email'),
+        'selectedCurrency': prefs.getString('selected_currency'),
+        'themeMode': prefs.getString('theme_mode'),
+        'privacyMaskEnabled': prefs.getBool('privacy_mask_enabled'),
+        'autoBackupFrequency': prefs.getString(_keyAutoFrequency),
+        'maxBackupFiles': prefs.getInt(_keyMaxFiles),
+      },
       'data': {
         'accounts': accounts
             .map((a) => {
@@ -593,6 +604,303 @@ class BackupRestoreService {
     return filePath;
   }
 
+  /// Create a comprehensive multi-sheet Excel (.xlsx) workbook containing all financial data
+  Future<String> createExcelExport({String? targetDir}) async {
+    final accounts = await _db.select(_db.accounts).get();
+    final categories = await _db.select(_db.categories).get();
+    final transactions = await (_db.select(_db.transactions)
+          ..orderBy([(t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc)]))
+        .get();
+    final budgets = await _db.select(_db.budgets).get();
+    final debts = await _db.select(_db.debts).get();
+    final debtRepayments = await _db.select(_db.debtRepayments).get();
+    final goals = await _db.select(_db.goals).get();
+    final goalTransactions = await _db.select(_db.goalTransactions).get();
+    final subscriptions = await _db.select(_db.recurringTransactions).get();
+
+    final categoryMap = {for (final c in categories) c.id: c.name};
+    final accountMap = {for (final a in accounts) a.id: a.name};
+    final debtMap = {for (final d in debts) d.id: d.personName};
+    final goalMap = {for (final g in goals) g.id: g.name};
+
+    // Calculate account balances
+    final accountBalances = <String, double>{
+      for (final a in accounts) a.id: a.initialBalance,
+    };
+    double totalIncome = 0.0;
+    double totalExpense = 0.0;
+
+    for (final t in transactions) {
+      if (t.type == 'income') {
+        totalIncome += t.amount;
+        if (accountBalances.containsKey(t.accountId)) {
+          accountBalances[t.accountId] = (accountBalances[t.accountId] ?? 0.0) + t.amount;
+        }
+      } else if (t.type == 'expense') {
+        totalExpense += t.amount;
+        if (accountBalances.containsKey(t.accountId)) {
+          accountBalances[t.accountId] = (accountBalances[t.accountId] ?? 0.0) - t.amount;
+        }
+      } else if (t.type == 'transfer') {
+        if (accountBalances.containsKey(t.accountId)) {
+          accountBalances[t.accountId] = (accountBalances[t.accountId] ?? 0.0) - t.amount;
+        }
+        final toAccId = t.toAccountId;
+        if (toAccId != null && accountBalances.containsKey(toAccId)) {
+          accountBalances[toAccId] = (accountBalances[toAccId] ?? 0.0) + t.amount;
+        }
+      }
+    }
+
+    final totalNetWorth = accountBalances.values.fold<double>(0.0, (sum, val) => sum + val);
+    final totalLentRemaining = debts.where((d) => d.type == 'lent' && !d.isSettled).fold<double>(0.0, (s, d) => s + (d.amount - d.settledAmount).clamp(0.0, double.infinity));
+    final totalBorrowedRemaining = debts.where((d) => d.type == 'borrowed' && !d.isSettled).fold<double>(0.0, (s, d) => s + (d.amount - d.settledAmount).clamp(0.0, double.infinity));
+    final totalSavings = goals.fold<double>(0.0, (sum, g) => sum + g.currentAmount);
+
+    final excel = Excel.createExcel();
+    excel.rename('Sheet1', 'Summary');
+
+    // 1. Summary Sheet
+    excel.appendRow('Summary', [TextCellValue('Lumina Expense - Financial Overview')]);
+    excel.appendRow('Summary', [TextCellValue('Export Timestamp'), TextCellValue(DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()))]);
+    excel.appendRow('Summary', [TextCellValue('')]);
+    excel.appendRow('Summary', [TextCellValue('Metric'), TextCellValue('Value / Balance')]);
+    excel.appendRow('Summary', [TextCellValue('Estimated Net Worth'), DoubleCellValue(totalNetWorth)]);
+    excel.appendRow('Summary', [TextCellValue('Total Accounts Tracked'), IntCellValue(accounts.length)]);
+    excel.appendRow('Summary', [TextCellValue('Lifetime Incomes Recorded'), DoubleCellValue(totalIncome)]);
+    excel.appendRow('Summary', [TextCellValue('Lifetime Expenses Recorded'), DoubleCellValue(totalExpense)]);
+    excel.appendRow('Summary', [TextCellValue('Total Transactions Recorded'), IntCellValue(transactions.length)]);
+    excel.appendRow('Summary', [TextCellValue('Active Budgets'), IntCellValue(budgets.length)]);
+    excel.appendRow('Summary', [TextCellValue('Debts Lent (Owed to You)'), DoubleCellValue(totalLentRemaining)]);
+    excel.appendRow('Summary', [TextCellValue('Debts Borrowed (You Owe)'), DoubleCellValue(totalBorrowedRemaining)]);
+    excel.appendRow('Summary', [TextCellValue('Total Saved in Goals'), DoubleCellValue(totalSavings)]);
+    excel.appendRow('Summary', [TextCellValue('Active Subscriptions'), IntCellValue(subscriptions.where((s) => s.isActive).length)]);
+
+    // 2. Transactions Sheet
+    excel.appendRow('Transactions', [
+      TextCellValue('Date'),
+      TextCellValue('Time'),
+      TextCellValue('Title'),
+      TextCellValue('Type'),
+      TextCellValue('Category'),
+      TextCellValue('Account'),
+      TextCellValue('To Account'),
+      TextCellValue('Amount'),
+      TextCellValue('Note'),
+      TextCellValue('Tags'),
+    ]);
+    for (final t in transactions) {
+      final catName = categoryMap[t.categoryId] ?? (t.type == 'transfer' ? 'Transfer' : 'Uncategorized');
+      final accName = accountMap[t.accountId] ?? 'Unknown Account';
+      final toAccName = t.toAccountId != null ? (accountMap[t.toAccountId] ?? '') : '';
+      excel.appendRow('Transactions', [
+        TextCellValue(DateFormat('yyyy-MM-dd').format(t.date)),
+        TextCellValue(DateFormat('HH:mm:ss').format(t.date)),
+        TextCellValue(t.title),
+        TextCellValue(t.type.toUpperCase()),
+        TextCellValue(catName),
+        TextCellValue(accName),
+        TextCellValue(toAccName),
+        DoubleCellValue(t.amount),
+        TextCellValue(t.note ?? ''),
+        TextCellValue(t.tags ?? ''),
+      ]);
+    }
+
+    // 3. Accounts Sheet
+    excel.appendRow('Accounts', [
+      TextCellValue('Account Name'),
+      TextCellValue('Type'),
+      TextCellValue('Currency'),
+      TextCellValue('Initial Balance'),
+      TextCellValue('Current Balance'),
+      TextCellValue('Status'),
+    ]);
+    for (final a in accounts) {
+      final curBal = accountBalances[a.id] ?? a.initialBalance;
+      excel.appendRow('Accounts', [
+        TextCellValue(a.name),
+        TextCellValue(a.type.toUpperCase()),
+        TextCellValue(a.currency),
+        DoubleCellValue(a.initialBalance),
+        DoubleCellValue(curBal),
+        TextCellValue(a.isArchived ? 'Archived' : 'Active'),
+      ]);
+    }
+
+    // 4. Budgets Sheet
+    excel.appendRow('Budgets', [
+      TextCellValue('Category'),
+      TextCellValue('Limit Amount'),
+      TextCellValue('Period'),
+      TextCellValue('Start Date'),
+    ]);
+    for (final b in budgets) {
+      excel.appendRow('Budgets', [
+        TextCellValue(categoryMap[b.categoryId] ?? 'Unknown'),
+        DoubleCellValue(b.amountLimit),
+        TextCellValue(b.period.toUpperCase()),
+        TextCellValue(DateFormat('yyyy-MM-dd').format(b.startDate)),
+      ]);
+    }
+
+    // 5. Debts & Loans Sheet
+    excel.appendRow('Debts & Loans', [
+      TextCellValue('Person Name'),
+      TextCellValue('Type'),
+      TextCellValue('Original Amount'),
+      TextCellValue('Settled Amount'),
+      TextCellValue('Remaining Balance'),
+      TextCellValue('Date'),
+      TextCellValue('Due Date'),
+      TextCellValue('Status'),
+      TextCellValue('Notes'),
+    ]);
+    for (final d in debts) {
+      final remaining = (d.amount - d.settledAmount).clamp(0.0, double.infinity);
+      excel.appendRow('Debts & Loans', [
+        TextCellValue(d.personName),
+        TextCellValue(d.type == 'lent' ? 'Lent (They Owe Me)' : 'Borrowed (I Owe Them)'),
+        DoubleCellValue(d.amount),
+        DoubleCellValue(d.settledAmount),
+        DoubleCellValue(remaining),
+        TextCellValue(DateFormat('yyyy-MM-dd').format(d.date)),
+        TextCellValue(d.dueDate != null ? DateFormat('yyyy-MM-dd').format(d.dueDate!) : ''),
+        TextCellValue(d.isSettled ? 'Settled' : 'Active'),
+        TextCellValue(d.notes ?? ''),
+      ]);
+    }
+
+    // 6. Debt Repayments Sheet
+    excel.appendRow('Debt Repayments', [
+      TextCellValue('Person / Debt'),
+      TextCellValue('Repayment Amount'),
+      TextCellValue('Date'),
+      TextCellValue('Notes'),
+    ]);
+    for (final r in debtRepayments) {
+      excel.appendRow('Debt Repayments', [
+        TextCellValue(debtMap[r.debtId] ?? 'Unknown'),
+        DoubleCellValue(r.amount),
+        TextCellValue(DateFormat('yyyy-MM-dd').format(r.date)),
+        TextCellValue(r.notes ?? ''),
+      ]);
+    }
+
+    // 7. Savings Goals Sheet
+    excel.appendRow('Savings Goals', [
+      TextCellValue('Goal Name'),
+      TextCellValue('Target Amount'),
+      TextCellValue('Current Amount'),
+      TextCellValue('Progress %'),
+      TextCellValue('Target Date'),
+      TextCellValue('Status'),
+      TextCellValue('Notes'),
+    ]);
+    for (final g in goals) {
+      final pct = g.targetAmount > 0 ? (g.currentAmount / g.targetAmount * 100).clamp(0.0, 100.0) : 0.0;
+      excel.appendRow('Savings Goals', [
+        TextCellValue(g.name),
+        DoubleCellValue(g.targetAmount),
+        DoubleCellValue(g.currentAmount),
+        DoubleCellValue(double.parse(pct.toStringAsFixed(1))),
+        TextCellValue(g.targetDate != null ? DateFormat('yyyy-MM-dd').format(g.targetDate!) : ''),
+        TextCellValue(g.isCompleted ? 'Completed' : 'In Progress'),
+        TextCellValue(g.notes ?? ''),
+      ]);
+    }
+
+    // 8. Goal Contributions Sheet
+    excel.appendRow('Goal Contributions', [
+      TextCellValue('Goal Name'),
+      TextCellValue('Action'),
+      TextCellValue('Amount'),
+      TextCellValue('Date'),
+      TextCellValue('Notes'),
+    ]);
+    for (final t in goalTransactions) {
+      excel.appendRow('Goal Contributions', [
+        TextCellValue(goalMap[t.goalId] ?? 'Unknown'),
+        TextCellValue(t.type.toUpperCase()),
+        DoubleCellValue(t.amount),
+        TextCellValue(DateFormat('yyyy-MM-dd').format(t.date)),
+        TextCellValue(t.notes ?? ''),
+      ]);
+    }
+
+    // 9. Subscriptions Sheet
+    excel.appendRow('Subscriptions', [
+      TextCellValue('Subscription / Bill'),
+      TextCellValue('Amount'),
+      TextCellValue('Category'),
+      TextCellValue('Account'),
+      TextCellValue('Frequency'),
+      TextCellValue('Next Due Date'),
+      TextCellValue('Auto-Log'),
+      TextCellValue('Status'),
+      TextCellValue('Notes'),
+    ]);
+    for (final s in subscriptions) {
+      excel.appendRow('Subscriptions', [
+        TextCellValue(s.title),
+        DoubleCellValue(s.amount),
+        TextCellValue(categoryMap[s.categoryId] ?? 'Unknown'),
+        TextCellValue(accountMap[s.accountId] ?? 'Unknown'),
+        TextCellValue(s.frequency.toUpperCase()),
+        TextCellValue(DateFormat('yyyy-MM-dd').format(s.nextDueDate)),
+        TextCellValue(s.autoLog ? 'Yes' : 'No'),
+        TextCellValue(s.isActive ? 'Active' : 'Paused'),
+        TextCellValue(s.notes ?? ''),
+      ]);
+    }
+
+    // 10. Categories Sheet
+    excel.appendRow('Categories', [
+      TextCellValue('Category Name'),
+      TextCellValue('Type'),
+      TextCellValue('Default Category'),
+    ]);
+    for (final c in categories) {
+      excel.appendRow('Categories', [
+        TextCellValue(c.name),
+        TextCellValue(c.type.toUpperCase()),
+        TextCellValue(c.isDefault ? 'Yes' : 'No'),
+      ]);
+    }
+
+    final bytes = excel.save();
+    if (bytes == null) {
+      throw Exception('Failed to encode Excel spreadsheet.');
+    }
+
+    final dirPath = targetDir ?? await getBackupStorageDirectory();
+    final dir = Directory(dirPath);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final filePath = '${dir.path}/lumina_financial_workbook_$timestamp.xlsx';
+    final file = File(filePath);
+    await file.writeAsBytes(bytes);
+    return filePath;
+  }
+
+  /// Share complete multi-sheet Excel workbook via apps
+  Future<String> exportExcelWorkbook() async {
+    final tempDir = await getTemporaryDirectory();
+    final filePath = await createExcelExport(targetDir: tempDir.path);
+    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+
+    await Share.shareXFiles(
+      [XFile(filePath)],
+      subject: 'Lumina Expense Financial Workbook ($timestamp)',
+      text: 'Exported complete financial workbook (.xlsx).',
+    );
+
+    return filePath;
+  }
+
   /// Inspect a backup file by path (supports encrypted and unencrypted backups)
   Future<BackupPreview> inspectBackupFile(String filePath, {String? password}) async {
     final file = File(filePath);
@@ -645,6 +953,19 @@ class BackupRestoreService {
 
     final preview = await inspectBackupFile(path, password: password);
     return (filePath: path, preview: preview, isEncrypted: isEnc);
+  }
+
+  /// Launch file picker to select a backup file path (.json or .enc)
+  Future<String?> pickBackupFilePath() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json', 'enc'],
+    );
+
+    if (result == null || result.files.isEmpty || result.files.single.path == null) {
+      return null;
+    }
+    return result.files.single.path!;
   }
 
   /// Restore database from JSON backup file
@@ -869,6 +1190,19 @@ class BackupRestoreService {
             );
       }
     });
+
+    // 11. Restore user settings and preferences if present (v6+)
+    if (json['settings'] is Map<String, dynamic>) {
+      final s = json['settings'] as Map<String, dynamic>;
+      final prefs = await SharedPreferences.getInstance();
+      if (s['userProfileName'] is String) await prefs.setString('user_profile_name', s['userProfileName']);
+      if (s['userProfileEmail'] is String) await prefs.setString('user_profile_email', s['userProfileEmail']);
+      if (s['selectedCurrency'] is String) await prefs.setString('selected_currency', s['selectedCurrency']);
+      if (s['themeMode'] is String) await prefs.setString('theme_mode', s['themeMode']);
+      if (s['privacyMaskEnabled'] is bool) await prefs.setBool('privacy_mask_enabled', s['privacyMaskEnabled']);
+      if (s['autoBackupFrequency'] is String) await prefs.setString(_keyAutoFrequency, s['autoBackupFrequency']);
+      if (s['maxBackupFiles'] is int) await prefs.setInt(_keyMaxFiles, s['maxBackupFiles']);
+    }
   }
 
   /// Populate comprehensive, realistic multi-month Demo / Sample data

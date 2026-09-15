@@ -234,6 +234,46 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     }
   }
 
+  Future<void> _handleExportExcel() async {
+    setState(() => _isLoading = true);
+    try {
+      final service = ref.read(backupRestoreServiceProvider);
+      final path = await service.createExcelExport();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ Complete Excel Workbook (.xlsx) exported successfully!\nSaved to: $path'),
+            duration: const Duration(seconds: 5),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to export Excel: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleShareExcel() async {
+    setState(() => _isLoading = true);
+    try {
+      await ref.read(backupRestoreServiceProvider).exportExcelWorkbook();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Excel Share failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _handleExportCsv() async {
     setState(() => _isLoading = true);
     try {
@@ -449,22 +489,16 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
 
   Future<void> _handleRestoreFromFilePicker() async {
-    setState(() => _isLoading = true);
     try {
-      final inspected = await ref.read(backupRestoreServiceProvider).pickAndInspectBackup();
-      if (inspected == null) {
-        setState(() => _isLoading = false);
-        return;
-      }
-      await _confirmAndRestore(inspected.filePath);
+      final filePath = await ref.read(backupRestoreServiceProvider).pickBackupFilePath();
+      if (filePath == null) return;
+      await _confirmAndRestore(filePath);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('File error: $e')),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -640,7 +674,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
                   const SizedBox(height: 20),
 
-                  // ─── Actions Section (Create Backup / CSV) ───
+                  // ─── Actions Section (Create Backup / Excel / CSV) ───
                   Row(
                     children: [
                       Expanded(
@@ -657,14 +691,17 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            side: const BorderSide(color: Color(0xFF10B981), width: 1.5),
+                          ),
+                          icon: const Icon(Icons.table_chart_rounded, size: 20, color: Color(0xFF10B981)),
+                          label: const Text('Export Excel (.xlsx)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF10B981))),
+                          onPressed: _handleExportExcel,
                         ),
-                        icon: const Icon(Icons.table_view_rounded, size: 20, color: Color(0xFF10B981)),
-                        label: const Text('Export CSV', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                        onPressed: _handleExportCsv,
                       ),
                     ],
                   ),
@@ -679,19 +716,48 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          icon: const Icon(Icons.share_rounded, size: 16, color: AppColors.transfer),
-                          label: const Text('Share Backup JSON', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                          onPressed: _handleShareJson,
+                          icon: const Icon(Icons.share_rounded, size: 15, color: Color(0xFF10B981)),
+                          label: const Text('Share Excel', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          onPressed: _handleShareExcel,
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          icon: const Icon(Icons.share_outlined, size: 16, color: Color(0xFF6366F1)),
+                          icon: const Icon(Icons.share_rounded, size: 15, color: AppColors.transfer),
+                          label: const Text('Share JSON', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          onPressed: _handleShareJson,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.table_view_rounded, size: 15, color: Color(0xFF6366F1)),
+                          label: const Text('Export CSV', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          onPressed: _handleExportCsv,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.share_outlined, size: 15, color: Color(0xFF6366F1)),
                           label: const Text('Share CSV', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                           onPressed: _handleShareCsv,
                         ),

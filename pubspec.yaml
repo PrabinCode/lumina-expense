@@ -49,6 +49,7 @@ dependencies:
   image_picker: ^1.1.2
   google_mlkit_text_recognition: ^0.14.0
   csv: ^6.0.0
+  excel_plus: ^2.21.0
 
   # Data Formats & Helpers
   intl: ^0.20.2

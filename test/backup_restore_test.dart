@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:drift/native.dart';
+import 'package:excel_plus/excel_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumina_expense/core/database/app_database.dart';
 import 'package:lumina_expense/features/backup/services/backup_restore_service.dart';
@@ -164,6 +165,119 @@ void main() {
 
     final goalTxs = await db.select(db.goalTransactions).get();
     expect(goalTxs.isEmpty, true);
+
+    tempDir.deleteSync(recursive: true);
+  });
+
+  test('Backup and restore preserves user settings and preferences (v6)', () async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_profile_name', 'Alex Johnson');
+    await prefs.setString('user_profile_email', 'alex@example.com');
+    await prefs.setString('selected_currency', 'EUR');
+    await prefs.setString('theme_mode', 'dark');
+    await prefs.setBool('privacy_mask_enabled', true);
+
+    await backupService.seedDemoData();
+
+    final tempDir = Directory.systemTemp.createTempSync('lumina_settings_test');
+    final filePath = await backupService.createBackup(targetDir: tempDir.path);
+
+    // Clear preferences
+    await prefs.clear();
+    expect(prefs.getString('user_profile_name'), isNull);
+    expect(prefs.getString('selected_currency'), isNull);
+
+    // Restore
+    await backupService.restoreFromFile(filePath);
+
+    expect(prefs.getString('user_profile_name'), 'Alex Johnson');
+    expect(prefs.getString('user_profile_email'), 'alex@example.com');
+    expect(prefs.getString('selected_currency'), 'EUR');
+    expect(prefs.getString('theme_mode'), 'dark');
+    expect(prefs.getBool('privacy_mask_enabled'), true);
+
+    tempDir.deleteSync(recursive: true);
+  });
+
+  test('Multi-sheet Excel (.xlsx) export contains all 10 sheets with comprehensive data', () async {
+    await backupService.seedDemoData();
+
+    final tempDir = Directory.systemTemp.createTempSync('lumina_excel_test');
+    final filePath = await backupService.createExcelExport(targetDir: tempDir.path);
+
+    final file = File(filePath);
+    expect(file.existsSync(), true);
+    expect(file.lengthSync(), greaterThan(1000));
+    expect(filePath.endsWith('.xlsx'), true);
+
+    final bytes = file.readAsBytesSync();
+    final excel = Excel.decodeBytes(bytes);
+
+    // Check that all 10 expected sheets are created
+    final expectedSheets = [
+      'Summary',
+      'Transactions',
+      'Accounts',
+      'Budgets',
+      'Debts & Loans',
+      'Debt Repayments',
+      'Savings Goals',
+      'Goal Contributions',
+      'Subscriptions',
+      'Categories',
+    ];
+
+    for (final sheetName in expectedSheets) {
+      expect(excel.tables.containsKey(sheetName), true, reason: 'Missing sheet: $sheetName');
+      expect(excel.tables[sheetName]!.rows.isNotEmpty, true, reason: 'Sheet is empty: $sheetName');
+    }
+
+    // Verify transactions sheet has rows matching demo transactions
+    final txSheet = excel.tables['Transactions']!;
+    expect(txSheet.rows.length, greaterThan(20)); // Headers + rows
+
+    // Verify accounts sheet has 4 accounts
+    final accSheet = excel.tables['Accounts']!;
+    expect(accSheet.rows.length, greaterThanOrEqualTo(5)); // Header + 4 accounts
+
+    tempDir.deleteSync(recursive: true);
+  });
+
+  test('Encrypted backup requires password on inspection and restores cleanly with password', () async {
+    await backupService.seedDemoData();
+
+    final tempDir = Directory.systemTemp.createTempSync('lumina_encrypted_test');
+    final filePath = await backupService.createBackup(
+      targetDir: tempDir.path,
+      password: 'SafePassword123!',
+    );
+
+    expect(File(filePath).existsSync(), true);
+    expect(filePath.endsWith('.enc'), true);
+
+    // Inspecting without password must throw PASSWORD_REQUIRED
+    expect(
+      () => backupService.inspectBackupFile(filePath),
+      throwsA(isA<FormatException>()),
+    );
+
+    // Inspecting with wrong password throws FormatException
+    expect(
+      () => backupService.inspectBackupFile(filePath, password: 'WrongPassword'),
+      throwsA(isA<FormatException>()),
+    );
+
+    // Inspecting with correct password succeeds
+    final preview = await backupService.inspectBackupFile(filePath, password: 'SafePassword123!');
+    expect(preview.appName, 'LuminaExpense');
+    expect(preview.transactionCount, greaterThan(10));
+
+    // Clear db and restore with correct password
+    await db.delete(db.transactions).go();
+    await backupService.restoreFromFile(filePath, password: 'SafePassword123!');
+
+    final restoredTxs = await db.select(db.transactions).get();
+    expect(restoredTxs.length, preview.transactionCount);
 
     tempDir.deleteSync(recursive: true);
   });
