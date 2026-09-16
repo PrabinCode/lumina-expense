@@ -10,6 +10,23 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Fixed` - for any bug fixes.
 - `Other` - for technical and release chores.
 
+## [v1.9.0] - 2026-09-16
+### Added
+- **Complete Multi-Sheet Native Excel Workbook (`.xlsx`) Export**:
+  - Direct generation of formatted, multi-sheet `.xlsx` workbooks containing 100% of user financial data.
+  - Dedicated sheets for **Summary / Net Worth Metrics**, **Transactions**, **Accounts & Wallets**, **Category Budgets**, **Debts & Loans**, **Debt Repayments**, **Savings Goals**, **Goal Contributions**, **Recurring Subscriptions**, and **Categories**.
+  - One-tap "Export Excel (.xlsx)" saving to local backups and "Share Excel" via native system share sheet.
+- **Persistent User Settings in JSON Backup & Restore (Schema Version 6)**:
+  - User profile name and email, global currency selection, theme preferences, privacy mask setting, and auto-backup schedules are now backed up in JSON snapshots and automatically restored across devices, with full backward compatibility for legacy v1–v5 backups.
+
+### Fixed
+- Fixed unhandled `PASSWORD_REQUIRED` exception when selecting encrypted `.lumina.enc` backups via system file picker, allowing the decryption password prompt and confirmation preview to trigger cleanly.
+
+### Improved
+- Polished Backup & Restore screen with dedicated action buttons for Excel, JSON, and CSV export and sharing.
+
+---
+
 ## [v1.4.0] - 2026-09-01
 ### Added
 
