@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../../core/services/receipt_ocr_service.dart';
 import '../../../../core/services/receipt_parser_service.dart';
@@ -75,17 +76,52 @@ class _ReceiptAttachmentWidgetState extends ConsumerState<ReceiptAttachmentWidge
     try {
       final pickedXFile = await _picker.pickImage(
         source: source,
-        maxWidth: 1280,
-        maxHeight: 1800,
-        imageQuality: 78,
+        maxWidth: 1600,
+        maxHeight: 2400,
+        imageQuality: 88,
       );
 
       if (pickedXFile == null) return;
 
+      // Launch interactive cropper immediately after capture
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: pickedXFile.path,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Crop & Align Receipt',
+            toolbarColor: AppColors.primary,
+            toolbarWidgetColor: Colors.white,
+            activeControlsWidgetColor: AppColors.primary,
+            initAspectRatio: CropAspectRatioPreset.original,
+            lockAspectRatio: false,
+            aspectRatioPresets: [
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.ratio3x2,
+              CropAspectRatioPreset.ratio4x3,
+              CropAspectRatioPreset.ratio16x9,
+            ],
+          ),
+          IOSUiSettings(
+            title: 'Crop & Align Receipt',
+            aspectRatioPresets: [
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.ratio3x2,
+              CropAspectRatioPreset.ratio4x3,
+              CropAspectRatioPreset.ratio16x9,
+            ],
+          ),
+        ],
+      );
+
+      // If user cancelled the cropper, exit gracefully
+      if (croppedFile == null) return;
+
       setState(() => _isProcessing = true);
 
       final storage = ref.read(receiptStorageServiceProvider);
-      final savedRelativePath = await storage.saveReceiptImage(File(pickedXFile.path));
+      final savedRelativePath = await storage.saveReceiptImage(File(croppedFile.path));
       final resolvedFile = await storage.resolveReceiptFile(savedRelativePath);
 
       widget.onReceiptChanged(savedRelativePath);

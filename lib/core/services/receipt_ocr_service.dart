@@ -82,14 +82,15 @@ class ReceiptOcrService {
       // Parse primarily with spatially reconstructed lines
       var parsed = _parser.parse(spatialText);
 
-      // If amount was not found in spatial lines, cross-reference with raw text
-      if (parsed.amount == null || parsed.date == null) {
+      // If amount, date, or particulars were not found in spatial lines, cross-reference with raw text
+      if (parsed.amount == null || parsed.date == null || parsed.particulars.isEmpty) {
         final rawParsed = _parser.parse(rawText);
         parsed = ParsedReceiptData(
           amount: parsed.amount ?? rawParsed.amount,
           date: parsed.date ?? rawParsed.date,
           merchantName: parsed.merchantName ?? rawParsed.merchantName,
           suggestedCategoryKeyword: parsed.suggestedCategoryKeyword ?? rawParsed.suggestedCategoryKeyword,
+          particulars: parsed.particulars.isNotEmpty ? parsed.particulars : rawParsed.particulars,
           rawText: '$spatialText\n---\n$rawText',
         );
       }

@@ -446,4 +446,114 @@ void main() {
       expect(result.suggestedCategoryKeyword, equals('food'));
     });
   });
+
+  group('ReceiptParserService - Particulars & Line Items Extraction', () {
+    test('extracts particulars from POS grocery tax invoice (Nepali Rajma, Tara Tichin Chiur, etc.)', () {
+      const groceryReceipt = '''
+        ABC GROCERY MART
+        PAN NO: 601234567
+        ABBREVIATED TAX INVOICE
+        Date: 2026-09-28 Time: 11:20 AM
+
+        Sn  HSC  Particulars          Qty   Rate    Amount
+        1   1008 Nepali Rajma Open      1  240.00    240.00
+        2   1009 TARAI TICHIN CHIUR     1  115.00    115.00
+        3   1010 MAAS KAALO DAAL OP     1  230.00    230.00
+        4   1011 Khairo Chana NO 1      1  180.00    180.00
+        5   1012 SUGAR (CHINI)          3   98.00    294.00
+        6   1013 JEERA PACKET 0.5 K     1  420.00    420.00
+        7   1014 DHANIYA DANA 500 G     1  155.00    155.00
+        8   1015 SUNFLOWER OIL 1 LT     4  235.00    940.00
+        ---------------------------------------------------
+        Gross Amount: 4116.00
+        Discount: 0.00
+        Taxable Amount: 0.00
+        VAT: 0.00
+        Net Amount: 4116.00
+        Tender: 4500.00
+        Change: 384.00
+        Thank you for shopping with us!
+      ''';
+
+      final result = parser.parse(groceryReceipt);
+      expect(result.amount, equals(4116.00));
+      expect(result.particulars, equals([
+        'Nepali Rajma Open',
+        'TARAI TICHIN CHIUR',
+        'MAAS KAALO DAAL OP',
+        'Khairo Chana NO 1',
+        'SUGAR (CHINI)',
+        'JEERA PACKET 0.5 K',
+        'DHANIYA DANA 500 G',
+        'SUNFLOWER OIL 1 LT',
+      ]));
+    });
+
+    test('extracts items from restaurant invoice', () {
+      const roadhouseReceipt = '''
+        Roadhouse Cafe Pvt. Ltd.
+        TAX INVOICE
+        Date: 2026-09-13
+
+        Item           Qty Rate     Amount
+        Mexicana Pizza V  1 670.00  670.00
+        The Greek Pizza   1 670.00  670.00
+
+        Total Items     : 2
+        SubTotal       : 1340.00
+        VAT 13%        : 191.62
+        GRAND TOTAL    : 1665.62
+      ''';
+
+      final result = parser.parse(roadhouseReceipt);
+      expect(result.particulars, equals([
+        'Mexicana Pizza V',
+        'The Greek Pizza',
+      ]));
+    });
+
+    test('extracts items from retail receipt without explicit header', () {
+      const walmartReceipt = '''
+        WALMART SUPERCENTER
+        Store #1234
+        Date: 09/07/2026
+        
+        MILK 1GAL        3.49
+        BREAD WHEAT      2.29
+        EGGS DOZEN       4.19
+        
+        SUBTOTAL         9.97
+        TAX              0.80
+        TOTAL           10.77
+      ''';
+
+      final result = parser.parse(walmartReceipt);
+      expect(result.particulars, equals([
+        'MILK 1GAL',
+        'BREAD WHEAT',
+        'EGGS DOZEN',
+      ]));
+    });
+
+    test('preserves valid item names starting with numbers or quantities', () {
+      const itemsReceipt = '''
+        SUPER STORE
+        Date: 2026-10-01
+
+        Particulars            Qty   Amount
+        1. 7UP 500ML             2    120.00
+        2. 3M TAPE               1     85.00
+        3. 100% ORANGE JUICE     1    210.00
+
+        TOTAL                        415.00
+      ''';
+
+      final result = parser.parse(itemsReceipt);
+      expect(result.particulars, equals([
+        '7UP 500ML',
+        '3M TAPE',
+        '100% ORANGE JUICE',
+      ]));
+    });
+  });
 }

@@ -63,5 +63,13 @@ void main() {
         await tempDir.delete(recursive: true);
       }
     });
+
+    test('getReceiptsDirectory ensures .nomedia file exists', () async {
+      final dir = await storageService.getReceiptsDirectory();
+      expect(await dir.exists(), isTrue);
+
+      final noMediaFile = File('${dir.path}/.nomedia');
+      expect(await noMediaFile.exists(), isTrue);
+    });
   });
 }

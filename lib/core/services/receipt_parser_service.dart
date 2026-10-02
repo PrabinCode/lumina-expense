@@ -10,6 +10,7 @@ class ParsedReceiptData {
   final DateTime? date;
   final String? merchantName;
   final String? suggestedCategoryKeyword;
+  final List<String> particulars;
   final String rawText;
 
   ParsedReceiptData({
@@ -17,12 +18,13 @@ class ParsedReceiptData {
     this.date,
     this.merchantName,
     this.suggestedCategoryKeyword,
+    this.particulars = const [],
     required this.rawText,
   });
 
   @override
   String toString() {
-    return 'ParsedReceiptData(amount: $amount, date: $date, merchant: $merchantName, categoryHint: $suggestedCategoryKeyword)';
+    return 'ParsedReceiptData(amount: $amount, date: $date, merchant: $merchantName, categoryHint: $suggestedCategoryKeyword, particularsCount: ${particulars.length})';
   }
 }
 
@@ -205,12 +207,14 @@ class ReceiptParserService {
     final date = extractDate(lines);
     final merchant = extractMerchant(lines);
     final categoryHint = extractCategoryHint(text, merchant);
+    final particulars = extractParticulars(lines);
 
     return ParsedReceiptData(
       amount: amount,
       date: date,
       merchantName: merchant,
       suggestedCategoryKeyword: categoryHint,
+      particulars: particulars,
       rawText: text,
     );
   }
@@ -745,5 +749,216 @@ class ReceiptParserService {
           return '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}';
         })
         .join(' ');
+  }
+
+  static final List<String> _tableEndKeywords = [
+    'gross amount',
+    'gross amt',
+    'total payable',
+    'grand total',
+    'net payable',
+    'net amount',
+    'total amount',
+    'total paid',
+    'customer paid',
+    'total rs',
+    'total npr',
+    'subtotal',
+    'sub total',
+    'sub-total',
+    'taxable amount',
+    'taxable amt',
+    'non taxable',
+    'non-taxable',
+    'discount',
+    'vat 13%',
+    'vat amount',
+    'total vat',
+    'sales tax',
+    'tax amt',
+    'tender',
+    'cash tender',
+    'change due',
+    'cash tendered',
+    'total qty',
+    'total item',
+    'total items',
+    'total pcs',
+    'total pieces',
+    'saving in this bill',
+    'savings in this bill',
+    'in words',
+    'thank you',
+    'visit again',
+  ];
+
+  static final RegExp _trailingNumericPattern = RegExp(
+    r'(?:\s+[\$€£₹Rs\.]*\s*(?:\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:[\.,]\d+)?)(?:\s*(?:pcs|pc|kg|gm|g|ltr|lt|x|nos))?){1,3}\s*$',
+    caseSensitive: false,
+  );
+
+  /// Extracts line item descriptions ("particulars") from receipt table rows.
+  List<String> extractParticulars(List<String> lines) {
+    if (lines.isEmpty) return const [];
+
+    int startIdx = -1;
+    for (int i = 0; i < lines.length; i++) {
+      final lineLower = lines[i].toLowerCase();
+      if (_isTableHeaderLine(lineLower)) {
+        startIdx = i + 1;
+        break;
+      }
+    }
+
+    final bool hasExplicitHeader = startIdx != -1;
+
+    // If no explicit table header found, skip top metadata lines (merchant, date, bill info)
+    if (!hasExplicitHeader) {
+      for (int i = 0; i < lines.length; i++) {
+        final lineLower = lines[i].toLowerCase();
+        if (_isNoiseOrMetadataLine(lineLower) ||
+            _isItemCountLine(lineLower) ||
+            _isTableEndLine(lineLower) ||
+            _matchesAny(lineLower, _merchantIgnorePatterns) ||
+            extractDate([lines[i]]) != null) {
+          continue;
+        }
+        // First line that looks like an item (ends with price)
+        if (_trailingNumericPattern.hasMatch(lines[i])) {
+          startIdx = i;
+          break;
+        }
+      }
+    }
+
+    if (startIdx == -1 || startIdx >= lines.length) {
+      return const [];
+    }
+
+    // Find the end boundary (totals / summary section)
+    int endIdx = lines.length;
+    for (int i = startIdx; i < lines.length; i++) {
+      final lineLower = lines[i].toLowerCase();
+      if (_isTableEndLine(lineLower)) {
+        endIdx = i;
+        break;
+      }
+    }
+
+    final List<String> particulars = [];
+
+    for (int i = startIdx; i < endIdx; i++) {
+      if (!hasExplicitHeader) {
+        final lineLower = lines[i].toLowerCase();
+        if (_matchesAny(lineLower, _merchantIgnorePatterns) ||
+            _isNoiseOrMetadataLine(lineLower) ||
+            !_trailingNumericPattern.hasMatch(lines[i])) {
+          continue;
+        }
+      }
+
+      final cleaned = _cleanParticularLine(lines[i]);
+      if (cleaned != null && cleaned.isNotEmpty) {
+        // Prevent duplicate consecutive lines from OCR glitches
+        if (particulars.isEmpty || particulars.last != cleaned) {
+          particulars.add(cleaned);
+        }
+      }
+    }
+
+    return particulars;
+  }
+
+  String? _cleanParticularLine(String line) {
+    var trimmed = line.trim();
+    if (trimmed.isEmpty) return null;
+
+    // Filter out horizontal divider lines (e.g. ---, ===, ___, ***)
+    if (RegExp(r'^[\-_=*\.\s]{3,}$').hasMatch(trimmed)) return null;
+
+    // Filter out repeated header lines
+    if (_isTableHeaderLine(trimmed.toLowerCase())) return null;
+
+    // Strip leading S.N. / index (e.g. "1 ", "1. ", "1) ", "01-") and optional numeric HS code (e.g. "1 1008 ")
+    trimmed = trimmed.replaceFirst(RegExp(r'^\s*(?:\d{1,3}[\.\)\:\-\s]+)(?:\d{4,8}\s+)?'), '');
+
+    // Case 1: Spatial layout where columns are separated by 2 or more spaces
+    final columns = trimmed.split(RegExp(r'\s{2,}'));
+    if (columns.length >= 2) {
+      int lastItemIdx = columns.length - 1;
+      while (lastItemIdx > 0 && _isNumericOrPriceToken(columns[lastItemIdx])) {
+        lastItemIdx--;
+      }
+      int firstItemIdx = 0;
+      if (_isNumericOrCodeToken(columns[firstItemIdx]) && columns.length > 1) {
+        firstItemIdx++;
+      }
+      if (firstItemIdx <= lastItemIdx) {
+        final candidate = columns.sublist(firstItemIdx, lastItemIdx + 1).join(' ').trim();
+        if (_isValidItemName(candidate)) {
+          return _formatItemName(candidate);
+        }
+      }
+    }
+
+    // Case 2: Standard or dense spacing: strip trailing numeric/price columns (up to 3 tokens)
+    var candidate = trimmed.replaceFirst(_trailingNumericPattern, '').trim();
+
+    // Strip any residual leading serial number
+    candidate = candidate.replaceFirst(RegExp(r'^\s*(?:\d{1,3}[\.\)\:\-\s]+)(?:\d{4,8}\s+)?'), '').trim();
+
+    if (_isValidItemName(candidate)) {
+      return _formatItemName(candidate);
+    }
+
+    return null;
+  }
+
+  bool _isTableEndLine(String lineLower) {
+    for (final kw in _tableEndKeywords) {
+      if (lineLower.contains(kw)) return true;
+    }
+    if (lineLower.startsWith('total') || lineLower.contains('total:')) {
+      return true;
+    }
+    return false;
+  }
+
+  bool _isNumericOrPriceToken(String token) {
+    final clean = token.replaceAll(RegExp(r'[\$€£₹,]|Rs\.?|NPR|USD|EUR', caseSensitive: false), '').trim();
+    if (clean.isEmpty) return false;
+    final withoutUnits = clean.replaceAll(RegExp(r'\b(?:pcs|pc|kg|gm|g|ltr|lt|x|nos)\b', caseSensitive: false), '').trim();
+    return RegExp(r'^[\d\s\.,]+$').hasMatch(withoutUnits);
+  }
+
+  bool _isNumericOrCodeToken(String token) {
+    final clean = token.trim();
+    return RegExp(r'^\d{1,8}$').hasMatch(clean);
+  }
+
+  bool _isValidItemName(String text) {
+    final clean = text.trim();
+    if (clean.length < 2) return false;
+
+    // Must contain at least two letters (a-z or A-Z) to be a valid description
+    final letterMatches = RegExp(r'[a-zA-Z]').allMatches(clean);
+    if (letterMatches.length < 2) return false;
+
+    final lower = clean.toLowerCase();
+
+    // Must not be metadata or total keywords
+    if (_isNoiseOrMetadataLine(lower) || _isItemCountLine(lower) || _isTableHeaderLine(lower)) {
+      return false;
+    }
+
+    for (final kw in _tableEndKeywords) {
+      if (lower.startsWith(kw) || lower == kw) return false;
+    }
+
+    return true;
+  }
+
+  String _formatItemName(String text) {
+    return text.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 }

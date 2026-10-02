@@ -47,6 +47,7 @@ dependencies:
   share_plus: ^10.1.4
   file_picker: ^8.1.7
   image_picker: ^1.1.2
+  image_cropper: ^12.2.1
   google_mlkit_text_recognition: ^0.14.0
   csv: ^6.0.0
   excel_plus: ^2.21.0

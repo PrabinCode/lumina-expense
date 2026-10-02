@@ -58,10 +58,27 @@ class ReceiptStorageService {
     return Directory(p.join(docsDir.path, receiptsFolderName));
   }
 
+  /// Ensures a `.nomedia` file exists in the directory to prevent Android's MediaScanner
+  /// from indexing receipt images and displaying them in phone gallery apps.
+  Future<void> _ensureNoMediaFile(Directory dir) async {
+    if (kIsWeb) return;
+    try {
+      final noMedia = File(p.join(dir.path, '.nomedia'));
+      if (!await noMedia.exists()) {
+        await noMedia.create();
+        debugPrint('[ReceiptStorage] Created .nomedia file in ${dir.path}');
+      }
+    } catch (e) {
+      debugPrint('[ReceiptStorage] Could not create .nomedia file: $e');
+    }
+  }
+
   /// Returns the local directory where receipt images are stored.
   /// On Android, uses the app-specific media directory (`Android/media/<package>/receipts`).
   /// On other platforms or if media dir is inaccessible, falls back to `<documents>/receipts`.
+  /// Automatically ensures a `.nomedia` file exists to hide receipts from system gallery apps.
   Future<Directory> getReceiptsDirectory() async {
+    Directory targetDir;
     if (!kIsWeb && Platform.isAndroid) {
       try {
         final mediaDir = Directory('/storage/emulated/0/Android/media/$androidMediaPackage/$receiptsFolderName');
@@ -72,18 +89,23 @@ class ReceiptStorageService {
         final testFile = File(p.join(mediaDir.path, '.write_test'));
         await testFile.writeAsString('ok');
         await testFile.delete();
-        return mediaDir;
+        targetDir = mediaDir;
       } catch (e) {
         debugPrint('[ReceiptStorage] Android media directory inaccessible, falling back to docs: $e');
+        final docsDir = await getApplicationDocumentsDirectory();
+        targetDir = Directory(p.join(docsDir.path, receiptsFolderName));
       }
+    } else {
+      final docsDir = await getApplicationDocumentsDirectory();
+      targetDir = Directory(p.join(docsDir.path, receiptsFolderName));
     }
 
-    final docsDir = await getApplicationDocumentsDirectory();
-    final receiptsDir = Directory(p.join(docsDir.path, receiptsFolderName));
-    if (!await receiptsDir.exists()) {
-      await receiptsDir.create(recursive: true);
+    if (!await targetDir.exists()) {
+      await targetDir.create(recursive: true);
     }
-    return receiptsDir;
+
+    await _ensureNoMediaFile(targetDir);
+    return targetDir;
   }
 
   /// Safe one-time migration: moves existing receipt photos from internal docs folder
@@ -121,7 +143,9 @@ class ReceiptStorageService {
           // Verify copy integrity
           if (await targetFile.exists() && await targetFile.length() == srcLen) {
             await entity.delete();
-            migratedCount++;
+            if (fileName != '.nomedia') {
+              migratedCount++;
+            }
           } else {
             debugPrint('[ReceiptStorage] Migration integrity check failed for $fileName');
           }

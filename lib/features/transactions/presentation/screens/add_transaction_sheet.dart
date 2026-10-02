@@ -569,13 +569,27 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
         // Note / Remarks input
         TextField(
           controller: _noteController,
-          maxLength: 150,
+          minLines: 1,
+          maxLines: 5,
+          keyboardType: TextInputType.multiline,
+          maxLength: 1000,
           maxLengthEnforcement: MaxLengthEnforcement.enforced,
-          buildCounter: (_, {required currentLength, required isFocused, required maxLength}) => null,
+          buildCounter: (context, {required currentLength, required isFocused, required maxLength}) {
+            if (currentLength > 800) {
+              return Text(
+                '$currentLength/$maxLength',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: currentLength >= 950 ? AppColors.expense : Colors.grey,
+                ),
+              );
+            }
+            return null;
+          },
           decoration: InputDecoration(
             labelText: 'Note & Remarks',
             floatingLabelBehavior: FloatingLabelBehavior.always,
-            hintText: 'Add note (e.g. #dinner, lunch)...',
+            hintText: 'Add note (e.g. #dinner, lunch, particulars)...',
             prefixIcon: const Icon(Icons.sticky_note_2_outlined, size: 20),
             filled: true,
             fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
@@ -583,7 +597,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide.none,
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             isDense: true,
           ),
           style: const TextStyle(fontSize: 13.5),
@@ -963,6 +977,14 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                               if (_titleController.text.trim().isEmpty) {
                                 final name = data.merchantName!;
                                 _titleController.text = name.length > 100 ? name.substring(0, 100) : name;
+                              }
+                            }
+                            if (data.particulars.isNotEmpty) {
+                              final particularsText = data.particulars.join('\n');
+                              if (_noteController.text.trim().isEmpty) {
+                                _noteController.text = particularsText;
+                              } else {
+                                _noteController.text = '${_noteController.text.trim()}\n\n$particularsText';
                               }
                             }
                             if (data.suggestedCategoryKeyword != null && _selectedCategoryId == null) {
