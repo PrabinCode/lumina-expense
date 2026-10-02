@@ -15,6 +15,7 @@ import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'features/onboarding/presentation/screens/onboarding_screen.dart';
 import 'core/services/app_update_service.dart';
 import 'core/services/quick_shortcut_service.dart';
+import 'core/services/receipt_storage_service.dart';
 import 'features/backup/services/backup_restore_service.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
 import 'features/transactions/presentation/screens/add_transaction_sheet.dart';
@@ -101,6 +102,15 @@ class _AppLockGateState extends ConsumerState<_AppLockGate> with WidgetsBindingO
     _checkOnboardingStatus();
     _checkAutoBackup();
     _checkAppUpdateSilently();
+    _checkLegacyReceiptMigration();
+  }
+
+  void _checkLegacyReceiptMigration() {
+    Future.microtask(() async {
+      try {
+        await ref.read(receiptStorageServiceProvider).migrateLegacyReceiptsIfNeeded();
+      } catch (_) {}
+    });
   }
 
   void _checkAutoBackup() {

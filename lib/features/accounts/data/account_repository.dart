@@ -59,6 +59,15 @@ class AccountRepository {
     return (_db.delete(_db.accounts)..where((tbl) => tbl.id.equals(accountId))).go();
   }
 
+  /// Returns the number of transactions linked to this account as source or destination
+  Future<int> getAccountTransactionCount(String accountId) async {
+    final query = _db.selectOnly(_db.transactions)
+      ..addColumns([_db.transactions.id.count()])
+      ..where(_db.transactions.accountId.equals(accountId) | _db.transactions.toAccountId.equals(accountId));
+    final count = await query.map((row) => row.read(_db.transactions.id.count()) ?? 0).getSingle();
+    return count;
+  }
+
   Future<void> restoreAccount(Account account) {
     return _db.into(_db.accounts).insert(
           AccountsCompanion.insert(

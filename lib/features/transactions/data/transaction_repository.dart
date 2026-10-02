@@ -508,7 +508,13 @@ class TransactionRepository {
     final isCurrentMonth = now.year == targetMonth.year && now.month == targetMonth.month;
     final currentDay = isCurrentMonth ? now.day : daysInMonth;
 
-    return _db.select(_db.transactions).watch().asyncMap((txs) async {
+    final velocityQuery = _db.select(_db.transactions)
+      ..where((t) =>
+          t.type.equals('expense') &
+          t.date.isBiggerOrEqualValue(prevMonthStart) &
+          t.date.isSmallerOrEqualValue(endOfMonth));
+
+    return velocityQuery.watch().asyncMap((txs) async {
       final budgets = await _db.select(_db.budgets).get();
       final totalBudget = budgets.fold<double>(0.0, (sum, b) => sum + b.amountLimit);
 
@@ -560,18 +566,19 @@ class TransactionRepository {
 
   /// 3. 50/30/20 Macro Budget Health Breakdown
   Stream<Macro503020Summary> watch50_30_20Summary(DateTime startDate, DateTime endDate) {
-    return _db.select(_db.transactions).watch().map((txs) {
+    final query = _db.select(_db.transactions)
+      ..where((t) =>
+          t.date.isBiggerOrEqualValue(startDate) &
+          t.date.isSmallerOrEqualValue(endDate));
+
+    return query.watch().map((txs) {
       double totalIncome = 0;
       double totalExpense = 0;
       double needsSpent = 0;
       double wantsSpent = 0;
       double savingsTransferred = 0;
 
-      final rangeTxs = txs.where((t) =>
-          t.date.isAfter(startDate.subtract(const Duration(seconds: 1))) &&
-          t.date.isBefore(endDate.add(const Duration(seconds: 1))));
-
-      for (final tx in rangeTxs) {
+      for (final tx in txs) {
         if (tx.type == 'income') {
           totalIncome += tx.amount;
           if ((tx.categoryId ?? '').contains('invest') || tx.title.toLowerCase().contains('dividend') || tx.title.toLowerCase().contains('interest')) {
@@ -621,8 +628,8 @@ class TransactionRepository {
       ..where((t) => t.type.equals('expense') &
           (t.date.isBiggerOrEqualValue(prevStart) & t.date.isSmallerOrEqualValue(curEnd)));
 
-    return _db.select(_db.categories).watch().asyncMap((categories) async {
-      final txs = await query.get();
+    return query.watch().asyncMap((txs) async {
+      final categories = await _db.select(_db.categories).get();
 
       final curSums = <String, double>{};
       final prevSums = <String, double>{};

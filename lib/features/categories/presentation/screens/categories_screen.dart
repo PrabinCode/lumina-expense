@@ -317,10 +317,7 @@ class _CategoryListViewState extends ConsumerState<_CategoryListView> {
                 buildDefaultDragHandles: false,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 itemCount: currentList.length,
-                onReorder: (oldIndex, newIndex) async {
-                  if (newIndex > oldIndex) {
-                    newIndex -= 1;
-                  }
+                onReorderItem: (oldIndex, newIndex) async {
                   setState(() {
                     final item = _localCategories!.removeAt(oldIndex);
                     _localCategories!.insert(newIndex, item);

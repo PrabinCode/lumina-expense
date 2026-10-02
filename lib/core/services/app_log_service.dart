@@ -131,7 +131,7 @@ class AppLogService {
     buffer.writeln('Package: com.prabincode.luminaexpense');
     buffer.writeln('OS: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}');
     buffer.writeln('Locale: ${Platform.localeName}');
-    buffer.writeln('Database Schema: v5');
+    buffer.writeln('Database Schema: v6');
     buffer.writeln();
 
     buffer.writeln('--- ANONYMIZED STATS (Privacy Compliant) ---');

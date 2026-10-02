@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'app_database.dart';
 import '../providers/database_provider.dart';
+import '../services/receipt_storage_service.dart';
 
 class StorageStats {
   final int databaseSizeBytes;
@@ -52,8 +53,9 @@ class StorageStats {
 
 class DatabaseMaintenanceService {
   final AppDatabase _db;
+  final ReceiptStorageService? _receiptStorage;
 
-  DatabaseMaintenanceService(this._db);
+  DatabaseMaintenanceService(this._db, [this._receiptStorage]);
 
   /// Calculate live database file size, WAL size, receipts footprint, row counts, and cache footprint
   Future<StorageStats> getStorageStats() async {
@@ -97,19 +99,32 @@ class DatabaseMaintenanceService {
 
     // 2. Locate and measure Receipt photo attachments
     try {
-      final docDir = await getApplicationDocumentsDirectory();
-      final receiptsDir = Directory(p.join(docDir.path, 'receipts'));
-      if (await receiptsDir.exists()) {
-        final activeReceiptPaths = await _getActiveReceiptNames();
+      final storage = _receiptStorage ?? ReceiptStorageService();
+      final activeDir = await storage.getReceiptsDirectory();
+      final legacyDir = await storage.getLegacyDocumentsReceiptsDirectory();
 
-        await for (final entity in receiptsDir.list(followLinks: false)) {
-          if (entity is File) {
-            final len = await entity.length();
-            receiptsSize += len;
-            receiptFilesCount++;
-            final baseName = p.basename(entity.path);
-            if (!activeReceiptPaths.contains(baseName)) {
-              orphanedReceipts++;
+      final searchDirs = <Directory>[activeDir];
+      if (p.canonicalize(activeDir.path) != p.canonicalize(legacyDir.path) && await legacyDir.exists()) {
+        searchDirs.add(legacyDir);
+      }
+
+      final activeReceiptPaths = await _getActiveReceiptNames();
+      final countedFiles = <String>{};
+
+      for (final dir in searchDirs) {
+        if (await dir.exists()) {
+          await for (final entity in dir.list(followLinks: false)) {
+            if (entity is File) {
+              final baseName = p.basename(entity.path);
+              if (!countedFiles.contains(baseName)) {
+                countedFiles.add(baseName);
+                final len = await entity.length();
+                receiptsSize += len;
+                receiptFilesCount++;
+                if (!activeReceiptPaths.contains(baseName)) {
+                  orphanedReceipts++;
+                }
+              }
             }
           }
         }
@@ -275,19 +290,28 @@ class DatabaseMaintenanceService {
     int purgedCount = 0;
 
     try {
-      final docDir = await getApplicationDocumentsDirectory();
-      final receiptsDir = Directory(p.join(docDir.path, 'receipts'));
-      if (await receiptsDir.exists()) {
-        final activeReceiptPaths = await _getActiveReceiptNames();
+      final storage = _receiptStorage ?? ReceiptStorageService();
+      final activeDir = await storage.getReceiptsDirectory();
+      final legacyDir = await storage.getLegacyDocumentsReceiptsDirectory();
 
-        await for (final entity in receiptsDir.list(followLinks: false)) {
-          if (entity is File) {
-            final baseName = p.basename(entity.path);
-            if (!activeReceiptPaths.contains(baseName)) {
-              final len = await entity.length();
-              await entity.delete();
-              purgedBytes += len;
-              purgedCount++;
+      final searchDirs = <Directory>[activeDir];
+      if (p.canonicalize(activeDir.path) != p.canonicalize(legacyDir.path) && await legacyDir.exists()) {
+        searchDirs.add(legacyDir);
+      }
+
+      final activeReceiptPaths = await _getActiveReceiptNames();
+
+      for (final dir in searchDirs) {
+        if (await dir.exists()) {
+          await for (final entity in dir.list(followLinks: false)) {
+            if (entity is File) {
+              final baseName = p.basename(entity.path);
+              if (!activeReceiptPaths.contains(baseName)) {
+                final len = await entity.length();
+                await entity.delete();
+                purgedBytes += len;
+                purgedCount++;
+              }
             }
           }
         }
@@ -302,10 +326,7 @@ class DatabaseMaintenanceService {
   /// Empty all soft-deleted records from the Recycle Bin and cleanup their receipts
   Future<int> emptyRecycleBin() async {
     try {
-      // First find any receipts in deleted items
-      final docDir = await getApplicationDocumentsDirectory();
-      final receiptsDir = Directory(p.join(docDir.path, 'receipts'));
-
+      final storage = _receiptStorage ?? ReceiptStorageService();
       final delItems = await _db.select(_db.deletedItems).get();
       for (final item in delItems) {
         if (item.entityType == 'transaction' && item.payloadJson.contains('receiptPath')) {
@@ -314,10 +335,7 @@ class DatabaseMaintenanceService {
             final txData = decoded['transaction'] as Map<String, dynamic>?;
             final path = txData?['receiptPath'] as String?;
             if (path != null && path.trim().isNotEmpty) {
-              final f = File(p.join(receiptsDir.path, p.basename(path.trim())));
-              if (await f.exists()) {
-                await f.delete();
-              }
+              await storage.deleteReceiptFile(path);
             }
           } catch (_) {}
         }
@@ -333,6 +351,7 @@ class DatabaseMaintenanceService {
 
 final databaseMaintenanceServiceProvider = Provider<DatabaseMaintenanceService>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return DatabaseMaintenanceService(db);
+  final storage = ref.watch(receiptStorageServiceProvider);
+  return DatabaseMaintenanceService(db, storage);
 });
 

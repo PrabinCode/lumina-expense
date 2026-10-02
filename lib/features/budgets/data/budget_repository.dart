@@ -42,38 +42,51 @@ class BudgetRepository {
     ]);
 
     final rows = await query.get();
+    if (rows.isEmpty) return [];
+
+    // Pre-fetch all direct expenses for the month in a single query
+    final directTxs = await (_db.select(_db.transactions)
+          ..where((t) =>
+              t.type.equals('expense') &
+              t.isSplit.equals(false) &
+              t.date.isBiggerOrEqualValue(startOfMonth) &
+              t.date.isSmallerOrEqualValue(endOfMonth)))
+        .get();
+
+    // Pre-fetch all split expenses for the month in a single query
+    final splitRows = await (_db.select(_db.transactionSplits).join([
+      innerJoin(_db.transactions, _db.transactions.id.equalsExp(_db.transactionSplits.transactionId)),
+    ])
+          ..where(_db.transactions.type.equals('expense') &
+              _db.transactions.date.isBiggerOrEqualValue(startOfMonth) &
+              _db.transactions.date.isSmallerOrEqualValue(endOfMonth)))
+        .get();
+
+    // Map spending and counts by category ID
+    final categorySpent = <String, double>{};
+    final categoryTxCount = <String, int>{};
+
+    for (final tx in directTxs) {
+      if (tx.categoryId != null) {
+        categorySpent[tx.categoryId!] = (categorySpent[tx.categoryId!] ?? 0.0) + tx.amount;
+        categoryTxCount[tx.categoryId!] = (categoryTxCount[tx.categoryId!] ?? 0) + 1;
+      }
+    }
+
+    for (final r in splitRows) {
+      final s = r.readTable(_db.transactionSplits);
+      categorySpent[s.categoryId] = (categorySpent[s.categoryId] ?? 0.0) + s.amount;
+      categoryTxCount[s.categoryId] = (categoryTxCount[s.categoryId] ?? 0) + 1;
+    }
+
     final results = <BudgetWithProgress>[];
 
     for (final row in rows) {
       final budget = row.readTable(b);
       final category = row.readTable(cat);
-
-      // Compute spent in this month for this category (direct transactions + split items)
-      final directTxs = await (_db.select(_db.transactions)
-            ..where((t) =>
-                t.categoryId.equals(category.id) &
-                t.type.equals('expense') &
-                t.isSplit.equals(false) &
-                t.date.isBiggerOrEqualValue(startOfMonth) &
-                t.date.isSmallerOrEqualValue(endOfMonth)))
-          .get();
-
-      final splitItems = await (_db.select(_db.transactionSplits).join([
-        innerJoin(_db.transactions, _db.transactions.id.equalsExp(_db.transactionSplits.transactionId)),
-      ])
-            ..where(_db.transactionSplits.categoryId.equals(category.id) &
-                _db.transactions.type.equals('expense') &
-                _db.transactions.date.isBiggerOrEqualValue(startOfMonth) &
-                _db.transactions.date.isSmallerOrEqualValue(endOfMonth)))
-          .get();
-
-      double spent = directTxs.fold<double>(0.0, (sum, t) => sum + t.amount);
-      for (final r in splitItems) {
-        spent += r.readTable(_db.transactionSplits).amount;
-      }
-
+      final spent = categorySpent[category.id] ?? 0.0;
+      final txCount = categoryTxCount[category.id] ?? 0;
       final percentage = budget.amountLimit > 0 ? (spent / budget.amountLimit) * 100 : 0.0;
-      final txCount = directTxs.length + splitItems.length;
 
       results.add(BudgetWithProgress(
         budget: budget,

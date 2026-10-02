@@ -23,10 +23,52 @@ class AccountsScreen extends ConsumerWidget {
     );
   }
 
-  void _confirmDeleteAccount(BuildContext context, WidgetRef ref, Account account, int totalAccounts) {
+  void _confirmDeleteAccount(BuildContext context, WidgetRef ref, Account account, int totalAccounts) async {
     if (totalAccounts <= 1) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cannot delete the only remaining account.')),
+      );
+      return;
+    }
+
+    final repo = ref.read(accountRepositoryProvider);
+    final txCount = await repo.getAccountTransactionCount(account.id);
+    if (!context.mounted) return;
+
+    if (txCount > 0) {
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: Text('Cannot Delete "${account.name}"'),
+            content: Text(
+              'This account has $txCount linked transaction(s). Deleting it would remove account references and corrupt financial reporting.\n\nYou can archive this account to hide it while keeping all transaction records intact.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.archive_outlined, size: 18),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () async {
+                  await repo.setArchived(account.id, true);
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Archived account "${account.name}"')),
+                    );
+                  }
+                },
+                label: const Text('Archive Account'),
+              ),
+            ],
+          );
+        },
       );
       return;
     }
@@ -37,7 +79,7 @@ class AccountsScreen extends ConsumerWidget {
         return AlertDialog(
           title: Text('Delete "${account.name}"?'),
           content: const Text(
-            'Are you sure you want to delete this account? Any associated transactions will remain but may lose their account link.',
+            'Are you sure you want to delete this account? This cannot be undone.',
           ),
           actions: [
             TextButton(
@@ -50,7 +92,6 @@ class AccountsScreen extends ConsumerWidget {
                 foregroundColor: Colors.white,
               ),
               onPressed: () async {
-                final repo = ref.read(accountRepositoryProvider);
                 await repo.deleteAccount(account.id);
                 if (context.mounted) Navigator.pop(context);
                 if (context.mounted) {
@@ -80,7 +121,6 @@ class AccountsScreen extends ConsumerWidget {
               },
               child: const Text('Delete'),
             ),
-
           ],
         );
       },

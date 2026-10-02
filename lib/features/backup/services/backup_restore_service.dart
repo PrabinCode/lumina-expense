@@ -1,12 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:csv/csv.dart';
 import 'package:drift/drift.dart';
 import 'package:excel_plus/excel_plus.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,8 +18,8 @@ import 'package:uuid/uuid.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/default_data.dart';
 import '../../../core/providers/database_provider.dart';
+import '../../../core/services/receipt_storage_service.dart';
 import 'backup_crypto_service.dart';
-
 
 class BackupPreview {
   final int version;
@@ -29,6 +32,10 @@ class BackupPreview {
   final int debtCount;
   final int goalCount;
   final int subscriptionCount;
+  final int receiptCount;
+  final int receiptSizeBytes;
+  final bool hasImages;
+  final bool isContainer;
 
   BackupPreview({
     required this.version,
@@ -41,7 +48,17 @@ class BackupPreview {
     required this.debtCount,
     this.goalCount = 0,
     this.subscriptionCount = 0,
+    this.receiptCount = 0,
+    this.receiptSizeBytes = 0,
+    this.hasImages = false,
+    this.isContainer = false,
   });
+
+  String get formattedReceiptSize {
+    if (receiptSizeBytes < 1024) return '$receiptSizeBytes B';
+    if (receiptSizeBytes < 1024 * 1024) return '${(receiptSizeBytes / 1024).toStringAsFixed(1)} KB';
+    return '${(receiptSizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
 }
 
 class BackupFileInfo {
@@ -51,6 +68,7 @@ class BackupFileInfo {
   final DateTime modifiedAt;
   final bool isEncrypted;
   final bool isAuto;
+  final bool isContainer;
 
   BackupFileInfo({
     required this.path,
@@ -59,6 +77,7 @@ class BackupFileInfo {
     required this.modifiedAt,
     this.isEncrypted = false,
     this.isAuto = false,
+    this.isContainer = false,
   });
 
   String get formattedSize {
@@ -72,16 +91,17 @@ class BackupFileInfo {
   }
 }
 
-
 class BackupRestoreService {
   static const _keyBackupDir = 'backup_storage_location';
   static const _keyAutoFrequency = 'backup_auto_frequency';
   static const _keyMaxFiles = 'backup_max_files';
   static const _keyLastAutoBackup = 'backup_last_auto_timestamp';
+  static const _keyIncludeReceipts = 'backup_include_receipts';
 
   final AppDatabase _db;
+  final ReceiptStorageService? _receiptStorage;
 
-  BackupRestoreService(this._db);
+  BackupRestoreService(this._db, [this._receiptStorage]);
 
   /// Get the user-configured backup storage directory (or standard default)
   Future<String> getBackupStorageDirectory() async {
@@ -148,6 +168,18 @@ class BackupRestoreService {
     return null;
   }
 
+  /// Get whether to bundle receipt images in backups (defaults to true)
+  Future<bool> getIncludeReceipts() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyIncludeReceipts) ?? true;
+  }
+
+  /// Set whether to bundle receipt images in backups
+  Future<void> setIncludeReceipts(bool include) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyIncludeReceipts, include);
+  }
+
   /// List all local backup files in the configured storage directory
   Future<List<BackupFileInfo>> listLocalBackups() async {
     final dirPath = await getBackupStorageDirectory();
@@ -160,13 +192,19 @@ class BackupRestoreService {
     final backups = <BackupFileInfo>[];
 
     for (final entity in entities) {
-      if (entity is File && (entity.path.endsWith('.json') || entity.path.endsWith('.enc') || entity.path.endsWith('.lumina.enc'))) {
+      if (entity is File &&
+          (entity.path.endsWith('.lumina') ||
+              entity.path.endsWith('.lumina.enc') ||
+              entity.path.endsWith('.zip') ||
+              entity.path.endsWith('.json') ||
+              entity.path.endsWith('.enc'))) {
         final stat = await entity.stat();
-        final name = entity.uri.pathSegments.isNotEmpty
-            ? entity.uri.pathSegments.last
-            : entity.path.split(Platform.pathSeparator).last;
+        final name = p.basename(entity.path);
         final isEncrypted = entity.path.endsWith('.enc') || entity.path.endsWith('.lumina.enc');
         final isAuto = name.toLowerCase().contains('_auto_') || name.toLowerCase().startsWith('lumina_backup_auto');
+        final isContainer = entity.path.endsWith('.lumina') ||
+            entity.path.endsWith('.zip') ||
+            entity.path.endsWith('.lumina.enc');
 
         backups.add(BackupFileInfo(
           path: entity.path,
@@ -175,6 +213,7 @@ class BackupRestoreService {
           modifiedAt: stat.modified,
           isEncrypted: isEncrypted,
           isAuto: isAuto,
+          isContainer: isContainer,
         ));
       }
     }
@@ -279,8 +318,10 @@ class BackupRestoreService {
       'settings': {
         'userProfileName': prefs.getString('user_profile_name'),
         'userProfileEmail': prefs.getString('user_profile_email'),
-        'selectedCurrency': prefs.getString('selected_currency'),
+        'selectedCurrency': prefs.getString('selected_currency_code') ?? prefs.getString('selected_currency'),
         'themeMode': prefs.getString('theme_mode'),
+        'themeModeIndex': prefs.getInt('app_theme_mode'),
+        'themePalette': prefs.getString('app_theme_palette_id'),
         'privacyMaskEnabled': prefs.getBool('privacy_mask_enabled'),
         'autoBackupFrequency': prefs.getString(_keyAutoFrequency),
         'maxBackupFiles': prefs.getInt(_keyMaxFiles),
@@ -427,10 +468,81 @@ class BackupRestoreService {
     };
   }
 
-  /// Create backup in configured storage location and auto-prune oldest auto-backups
-  Future<String> createBackup({String? targetDir, String? password, bool isAuto = false}) async {
+  /// Collect all active physical receipt image files referenced in transactions
+  Future<List<File>> _collectActiveReceiptFiles() async {
+    final storage = _receiptStorage ?? ReceiptStorageService();
+    final files = <File>[];
+    final seenNames = <String>{};
+
+    try {
+      final query = _db.selectOnly(_db.transactions)
+        ..addColumns([_db.transactions.receiptPath])
+        ..where(_db.transactions.receiptPath.isNotNull());
+      final rows = await query.map((row) => row.read(_db.transactions.receiptPath)).get();
+
+      for (final path in rows) {
+        if (path != null && path.trim().isNotEmpty) {
+          final file = await storage.resolveReceiptFile(path);
+          if (file != null && await file.exists()) {
+            final baseName = p.basename(file.path);
+            if (!seenNames.contains(baseName)) {
+              seenNames.add(baseName);
+              files.add(file);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error collecting active receipt files: $e');
+    }
+    return files;
+  }
+
+  /// Create backup in configured storage location and auto-prune oldest auto-backups.
+  /// Bundles database and all attached receipt images into a unified .lumina (ZIP) container.
+  Future<String> createBackup({
+    String? targetDir,
+    String? password,
+    bool isAuto = false,
+    bool? includeReceipts,
+  }) async {
     final payload = await _buildBackupPayload();
     final jsonString = const JsonEncoder.withIndent('  ').convert(payload);
+    final jsonBytes = utf8.encode(jsonString);
+
+    final shouldIncludeReceipts = includeReceipts ?? await getIncludeReceipts();
+    final receiptFiles = shouldIncludeReceipts ? await _collectActiveReceiptFiles() : <File>[];
+
+    final archive = Archive();
+
+    // 1. Calculate metadata and add manifest
+    int totalReceiptBytes = 0;
+    for (final file in receiptFiles) {
+      totalReceiptBytes += await file.length();
+    }
+
+    final manifest = {
+      'version': 7,
+      'appName': 'LuminaExpense',
+      'exportDate': DateTime.now().toIso8601String(),
+      'hasImages': receiptFiles.isNotEmpty,
+      'imageCount': receiptFiles.length,
+      'totalImageBytes': totalReceiptBytes,
+    };
+    final manifestBytes = utf8.encode(jsonEncode(manifest));
+    archive.addFile(ArchiveFile('manifest.json', manifestBytes.length, manifestBytes));
+
+    // 2. Add database.json
+    archive.addFile(ArchiveFile('database.json', jsonBytes.length, jsonBytes));
+
+    // 3. Add receipt images
+    for (final file in receiptFiles) {
+      final bytes = await file.readAsBytes();
+      final safeName = p.basename(file.path);
+      archive.addFile(ArchiveFile('receipts/$safeName', bytes.length, bytes));
+    }
+
+    final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive));
 
     final dirPath = targetDir ?? await getBackupStorageDirectory();
     final dir = Directory(dirPath);
@@ -441,15 +553,15 @@ class BackupRestoreService {
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final isEnc = password != null && password.trim().isNotEmpty;
     final prefix = isAuto ? 'lumina_backup_auto' : 'lumina_backup_manual';
-    final fileName = isEnc ? '${prefix}_$timestamp.lumina.enc' : '${prefix}_$timestamp.json';
+    final fileName = isEnc ? '${prefix}_$timestamp.lumina.enc' : '${prefix}_$timestamp.lumina';
     final filePath = '${dir.path}/$fileName';
 
     final file = File(filePath);
     if (isEnc) {
-      final encrypted = BackupCryptoService.encryptJson(jsonString, password.trim());
+      final encrypted = BackupCryptoService.encryptContainer(zipBytes, password.trim());
       await file.writeAsString(encrypted);
     } else {
-      await file.writeAsString(jsonString);
+      await file.writeAsBytes(zipBytes);
     }
 
     // Auto-prune old AUTO backups ONLY if limit is reached (manual backups are preserved)
@@ -466,28 +578,25 @@ class BackupRestoreService {
   }
 
   /// Export Backup to temporary location and trigger Native Share Sheet
-  Future<String> exportBackupJson({String? password}) async {
-    final payload = await _buildBackupPayload();
-    final jsonString = const JsonEncoder.withIndent('  ').convert(payload);
-
+  Future<String> exportBackupJson({String? password, bool? includeReceipts}) async {
     final tempDir = await getTemporaryDirectory();
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final isEnc = password != null && password.trim().isNotEmpty;
-    final fileName = isEnc ? 'lumina_backup_$timestamp.lumina.enc' : 'lumina_backup_$timestamp.json';
-    final filePath = '${tempDir.path}/$fileName';
 
-    final file = File(filePath);
-    if (isEnc) {
-      final encrypted = BackupCryptoService.encryptJson(jsonString, password.trim());
-      await file.writeAsString(encrypted);
-    } else {
-      await file.writeAsString(jsonString);
-    }
+    final filePath = await createBackup(
+      targetDir: tempDir.path,
+      password: password,
+      isAuto: false,
+      includeReceipts: includeReceipts,
+    );
 
+    final fileName = p.basename(filePath);
     await Share.shareXFiles(
       [XFile(filePath)],
       subject: 'Lumina Expense Backup ($timestamp)',
-      text: isEnc ? 'Lumina Expense encrypted database backup snapshot.' : 'Lumina Expense offline database backup snapshot.',
+      text: isEnc
+          ? 'Lumina Expense encrypted database & receipts backup snapshot ($fileName).'
+          : 'Lumina Expense offline database & receipts backup snapshot ($fileName).',
     );
 
     return filePath;
@@ -901,20 +1010,120 @@ class BackupRestoreService {
     return filePath;
   }
 
-  /// Inspect a backup file by path (supports encrypted and unencrypted backups)
+  /// Helper to check if file starts with encrypted header without loading entire binary into memory as string
+  Future<bool> _checkIfEncryptedFile(File file) async {
+    try {
+      final stream = file.openRead(0, 30);
+      final bytes = await stream.first;
+      final probe = String.fromCharCodes(bytes);
+      return probe.startsWith(BackupCryptoService.headerPrefix) ||
+          probe.startsWith(BackupCryptoService.headerPrefixV2);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Inspect a backup file by path (supports encrypted and unencrypted backups, both legacy JSON and .lumina/.zip containers)
   Future<BackupPreview> inspectBackupFile(String filePath, {String? password}) async {
     final file = File(filePath);
-    String content = await file.readAsString();
+    final rawBytes = await file.readAsBytes();
 
-    if (BackupCryptoService.isEncrypted(content)) {
+    Map<String, dynamic> dbJson;
+    int receiptCount = 0;
+    int receiptSizeBytes = 0;
+    bool hasImages = false;
+
+    // 1. Check if encrypted (V1 or V2)
+    final probe = rawBytes.length >= 14 ? String.fromCharCodes(rawBytes.take(14)) : '';
+    final isEncrypted = probe.startsWith(BackupCryptoService.headerPrefix) ||
+        probe.startsWith(BackupCryptoService.headerPrefixV2) ||
+        filePath.endsWith('.enc');
+
+    if (isEncrypted) {
       if (password == null || password.trim().isEmpty) {
         throw const FormatException('PASSWORD_REQUIRED');
       }
-      content = BackupCryptoService.decryptJson(content, password.trim());
+      final content = utf8.decode(rawBytes);
+      final decrypted = BackupCryptoService.decryptPayload(content, password.trim());
+
+      if (decrypted.isContainer) {
+        final archive = ZipDecoder().decodeBytes(decrypted.containerBytes!);
+        final dbFile = archive.findFile('database.json');
+        if (dbFile == null) {
+          throw const FormatException('Invalid backup archive: missing database.json.');
+        }
+        final jsonString = utf8.decode(dbFile.content as List<int>);
+        dbJson = jsonDecode(jsonString) as Map<String, dynamic>;
+
+        for (final f in archive) {
+          if (f.isFile && f.name.startsWith('receipts/')) {
+            receiptCount++;
+            receiptSizeBytes += f.size;
+          }
+        }
+        hasImages = receiptCount > 0;
+      } else {
+        // Legacy V1 JSON
+        dbJson = jsonDecode(decrypted.jsonString!) as Map<String, dynamic>;
+      }
+
+      return _buildPreviewFromPayload(
+        dbJson,
+        receiptCount: receiptCount,
+        receiptSizeBytes: receiptSizeBytes,
+        hasImages: hasImages,
+        isContainer: decrypted.isContainer,
+      );
     }
 
-    final Map<String, dynamic> json = jsonDecode(content);
+    // 2. Check if ZIP container archive (magic bytes PK 0x50 0x4B or .lumina / .zip extension)
+    final isZip = (rawBytes.length >= 4 && rawBytes[0] == 0x50 && rawBytes[1] == 0x4B) ||
+        filePath.endsWith('.lumina') ||
+        filePath.endsWith('.zip');
 
+    if (isZip) {
+      final archive = ZipDecoder().decodeBytes(rawBytes);
+      final dbFile = archive.findFile('database.json');
+      if (dbFile == null) {
+        throw const FormatException('Invalid backup archive: missing database.json.');
+      }
+      final jsonString = utf8.decode(dbFile.content as List<int>);
+      dbJson = jsonDecode(jsonString) as Map<String, dynamic>;
+
+      for (final f in archive) {
+        if (f.isFile && f.name.startsWith('receipts/')) {
+          receiptCount++;
+          receiptSizeBytes += f.size;
+        }
+      }
+      hasImages = receiptCount > 0;
+
+      return _buildPreviewFromPayload(
+        dbJson,
+        receiptCount: receiptCount,
+        receiptSizeBytes: receiptSizeBytes,
+        hasImages: hasImages,
+        isContainer: true,
+      );
+    }
+
+    // 3. Fallback: Legacy unencrypted JSON file
+    try {
+      final content = utf8.decode(rawBytes);
+      dbJson = jsonDecode(content) as Map<String, dynamic>;
+      return _buildPreviewFromPayload(dbJson, isContainer: false);
+    } catch (_) {
+      throw const FormatException('Unrecognized or corrupted backup file format.');
+    }
+  }
+
+  BackupPreview _buildPreviewFromPayload(
+    Map<String, dynamic> json, {
+    int receiptCount = 0,
+    int receiptSizeBytes = 0,
+    bool hasImages = false,
+    bool isContainer = false,
+  }) {
     if (!json.containsKey('data') || !json.containsKey('version')) {
       throw const FormatException('Invalid backup file structure.');
     }
@@ -932,6 +1141,10 @@ class BackupRestoreService {
       debtCount: (data['debts'] as List?)?.length ?? 0,
       goalCount: (data['goals'] as List?)?.length ?? 0,
       subscriptionCount: (data['recurringTransactions'] as List?)?.length ?? 0,
+      receiptCount: receiptCount,
+      receiptSizeBytes: receiptSizeBytes,
+      hasImages: hasImages,
+      isContainer: isContainer,
     );
   }
 
@@ -939,7 +1152,7 @@ class BackupRestoreService {
   Future<({String filePath, BackupPreview preview, bool isEncrypted})?> pickAndInspectBackup({String? password}) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['json', 'enc'],
+      allowedExtensions: ['lumina', 'zip', 'enc', 'json'],
     );
 
     if (result == null || result.files.isEmpty || result.files.single.path == null) {
@@ -948,18 +1161,17 @@ class BackupRestoreService {
 
     final path = result.files.single.path!;
     final file = File(path);
-    final content = await file.readAsString();
-    final isEnc = BackupCryptoService.isEncrypted(content) || path.endsWith('.enc');
+    final isEnc = path.endsWith('.enc') || path.endsWith('.lumina.enc') || await _checkIfEncryptedFile(file);
 
     final preview = await inspectBackupFile(path, password: password);
     return (filePath: path, preview: preview, isEncrypted: isEnc);
   }
 
-  /// Launch file picker to select a backup file path (.json or .enc)
+  /// Launch file picker to select a backup file path (.lumina, .zip, .enc, or .json)
   Future<String?> pickBackupFilePath() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['json', 'enc'],
+      allowedExtensions: ['lumina', 'zip', 'enc', 'json'],
     );
 
     if (result == null || result.files.isEmpty || result.files.single.path == null) {
@@ -968,21 +1180,92 @@ class BackupRestoreService {
     return result.files.single.path!;
   }
 
-  /// Restore database from JSON backup file
+  /// Extracts receipt photos from a ZIP archive container into the active receipts directory
+  Future<void> _extractReceiptsFromArchive(Archive archive) async {
+    final storage = _receiptStorage ?? ReceiptStorageService();
+    final receiptsDir = await storage.getReceiptsDirectory();
+    if (!await receiptsDir.exists()) {
+      await receiptsDir.create(recursive: true);
+    }
+
+    for (final file in archive) {
+      if (file.isFile && file.name.startsWith('receipts/')) {
+        final safeName = p.basename(file.name);
+        if (safeName.isNotEmpty && !safeName.contains('..')) {
+          final target = File(p.join(receiptsDir.path, safeName));
+          final content = file.content as List<int>;
+          await target.writeAsBytes(content);
+        }
+      }
+    }
+  }
+
+  /// Restore database from backup file (supports .lumina containers, encrypted .enc, and legacy .json)
   Future<void> restoreFromFile(String filePath, {String? password}) async {
     final file = File(filePath);
-    String content = await file.readAsString();
+    final rawBytes = await file.readAsBytes();
 
-    if (BackupCryptoService.isEncrypted(content)) {
+    Map<String, dynamic> dbJson;
+
+    // 1. Check if encrypted
+    final probe = rawBytes.length >= 14 ? String.fromCharCodes(rawBytes.take(14)) : '';
+    final isEncrypted = probe.startsWith(BackupCryptoService.headerPrefix) ||
+        probe.startsWith(BackupCryptoService.headerPrefixV2) ||
+        filePath.endsWith('.enc');
+
+    if (isEncrypted) {
       if (password == null || password.trim().isEmpty) {
         throw const FormatException('PASSWORD_REQUIRED');
       }
-      content = BackupCryptoService.decryptJson(content, password.trim());
+      final content = utf8.decode(rawBytes);
+      final decrypted = BackupCryptoService.decryptPayload(content, password.trim());
+
+      if (decrypted.isContainer) {
+        final archive = ZipDecoder().decodeBytes(decrypted.containerBytes!);
+        await _extractReceiptsFromArchive(archive);
+        final dbFile = archive.findFile('database.json');
+        if (dbFile == null) {
+          throw const FormatException('Corrupted backup archive: missing database.json.');
+        }
+        final jsonString = utf8.decode(dbFile.content as List<int>);
+        dbJson = jsonDecode(jsonString) as Map<String, dynamic>;
+      } else {
+        // Legacy V1 JSON
+        dbJson = jsonDecode(decrypted.jsonString!) as Map<String, dynamic>;
+      }
+
+      await _restoreDatabaseFromJson(dbJson);
+      return;
     }
 
-    final Map<String, dynamic> json = jsonDecode(content);
-    final data = json['data'] as Map<String, dynamic>;
+    // 2. Check if ZIP container archive
+    final isZip = (rawBytes.length >= 4 && rawBytes[0] == 0x50 && rawBytes[1] == 0x4B) ||
+        filePath.endsWith('.lumina') ||
+        filePath.endsWith('.zip');
 
+    if (isZip) {
+      final archive = ZipDecoder().decodeBytes(rawBytes);
+      await _extractReceiptsFromArchive(archive);
+      final dbFile = archive.findFile('database.json');
+      if (dbFile == null) {
+        throw const FormatException('Corrupted backup archive: missing database.json.');
+      }
+      final jsonString = utf8.decode(dbFile.content as List<int>);
+      dbJson = jsonDecode(jsonString) as Map<String, dynamic>;
+
+      await _restoreDatabaseFromJson(dbJson);
+      return;
+    }
+
+    // 3. Fallback: Legacy unencrypted JSON file
+    final content = utf8.decode(rawBytes);
+    dbJson = jsonDecode(content) as Map<String, dynamic>;
+    await _restoreDatabaseFromJson(dbJson);
+  }
+
+  /// Internal helper to restore database tables from decoded JSON map
+  Future<void> _restoreDatabaseFromJson(Map<String, dynamic> json) async {
+    final data = json['data'] as Map<String, dynamic>;
 
     await _db.transaction(() async {
       // 1. Clear existing data
@@ -1197,8 +1480,27 @@ class BackupRestoreService {
       final prefs = await SharedPreferences.getInstance();
       if (s['userProfileName'] is String) await prefs.setString('user_profile_name', s['userProfileName']);
       if (s['userProfileEmail'] is String) await prefs.setString('user_profile_email', s['userProfileEmail']);
-      if (s['selectedCurrency'] is String) await prefs.setString('selected_currency', s['selectedCurrency']);
-      if (s['themeMode'] is String) await prefs.setString('theme_mode', s['themeMode']);
+      final curr = s['selectedCurrency'] ?? s['selectedCurrencyCode'];
+      if (curr is String) {
+        await prefs.setString('selected_currency', curr);
+        await prefs.setString('selected_currency_code', curr);
+      }
+      if (s['themeMode'] is String) {
+        await prefs.setString('theme_mode', s['themeMode']);
+        final modeStr = (s['themeMode'] as String).toLowerCase();
+        final modeIdx = switch (modeStr) {
+          'light' => 1,
+          'dark' => 2,
+          'amoled' => 3,
+          'system' => 0,
+          _ => null,
+        };
+        if (modeIdx != null) {
+          await prefs.setInt('app_theme_mode', modeIdx);
+        }
+      }
+      if (s['themeModeIndex'] is int) await prefs.setInt('app_theme_mode', s['themeModeIndex']);
+      if (s['themePalette'] is String) await prefs.setString('app_theme_palette_id', s['themePalette']);
       if (s['privacyMaskEnabled'] is bool) await prefs.setBool('privacy_mask_enabled', s['privacyMaskEnabled']);
       if (s['autoBackupFrequency'] is String) await prefs.setString(_keyAutoFrequency, s['autoBackupFrequency']);
       if (s['maxBackupFiles'] is int) await prefs.setInt(_keyMaxFiles, s['maxBackupFiles']);
@@ -2056,5 +2358,6 @@ class BackupRestoreService {
 
 final backupRestoreServiceProvider = Provider<BackupRestoreService>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return BackupRestoreService(db);
+  final storage = ref.watch(receiptStorageServiceProvider);
+  return BackupRestoreService(db, storage);
 });

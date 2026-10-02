@@ -23,6 +23,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   int _maxBackups = 5;
   DateTime? _lastAutoBackupTime;
   String _backupFilter = 'all'; // 'all', 'manual', 'auto'
+  bool _includeReceipts = true;
 
   @override
   void initState() {
@@ -37,6 +38,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     final freq = await service.getAutoBackupFrequency();
     final maxF = await service.getMaxBackupFiles();
     final lastAuto = await service.getLastAutoBackupTime();
+    final incReceipts = await service.getIncludeReceipts();
 
     if (mounted) {
       setState(() {
@@ -45,6 +47,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
         _autoFrequency = freq;
         _maxBackups = maxF;
         _lastAutoBackupTime = lastAuto;
+        _includeReceipts = incReceipts;
       });
     }
   }
@@ -169,7 +172,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                     child: const Icon(Icons.lock_rounded, color: Colors.amber),
                   ),
                   title: const Text('Encrypted Backup (.lumina.enc)', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Password-protected with AES-256 encryption', style: TextStyle(fontSize: 12)),
+                  subtitle: const Text('Password-protected AES-256 archive (includes receipts)', style: TextStyle(fontSize: 12)),
                   trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   onTap: () => Navigator.pop(ctx, 'encrypted'),
@@ -182,10 +185,10 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                       color: AppColors.primary.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.file_copy_outlined, color: AppColors.primary),
+                    child: const Icon(Icons.archive_outlined, color: AppColors.primary),
                   ),
-                  title: const Text('Standard JSON Backup (.json)', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Standard plain JSON export', style: TextStyle(fontSize: 12)),
+                  title: const Text('Full Backup Archive (.lumina)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Complete database + receipt photos archive', style: TextStyle(fontSize: 12)),
                   trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   onTap: () => Navigator.pop(ctx, 'plain'),
@@ -379,10 +382,10 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                       color: AppColors.primary.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.file_copy_outlined, color: AppColors.primary),
+                    child: const Icon(Icons.archive_outlined, color: AppColors.primary),
                   ),
-                  title: const Text('Standard Plain JSON (.json)', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Unencrypted plain JSON snapshot', style: TextStyle(fontSize: 12)),
+                  title: const Text('Full Backup Archive (.lumina)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Complete database + receipt photos archive', style: TextStyle(fontSize: 12)),
                   trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   onTap: () => Navigator.pop(ctx, 'plain'),
@@ -729,7 +732,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                           icon: const Icon(Icons.share_rounded, size: 15, color: AppColors.transfer),
-                          label: const Text('Share JSON', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          label: const Text('Share Backup', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                           onPressed: _handleShareJson,
                         ),
                       ),
@@ -933,6 +936,17 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                                     ),
                                   ),
                                 ),
+                                if (backup.isContainer) ...[
+                                  const SizedBox(width: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: Colors.pink.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text('ZIP', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.pink)),
+                                  ),
+                                ],
                                 if (backup.isEncrypted) ...[
                                   const SizedBox(width: 4),
                                   Container(
@@ -1069,6 +1083,20 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                               },
                             ),
                           ),
+                        ),
+                        const Divider(height: 1),
+                        SwitchListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          secondary: const Icon(Icons.photo_library_outlined, color: Colors.pinkAccent),
+                          title: const Text('Include Receipt Photos', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                          subtitle: const Text('Bundle attached receipt images in new backups (.lumina / .lumina.enc)', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          value: _includeReceipts,
+                          activeThumbColor: AppColors.primary,
+                          onChanged: (val) async {
+                            final service = ref.read(backupRestoreServiceProvider);
+                            await service.setIncludeReceipts(val);
+                            setState(() => _includeReceipts = val);
+                          },
                         ),
                       ],
                     ),
@@ -1355,6 +1383,14 @@ class _RestoreConfirmSheet extends StatelessWidget {
                   _buildStatPill(context, Icons.handshake_rounded, 'Debts', preview.debtCount, Colors.purple),
                   _buildStatPill(context, Icons.savings_rounded, 'Goals', preview.goalCount, Colors.pink),
                   _buildStatPill(context, Icons.calendar_month_rounded, 'Subscriptions', preview.subscriptionCount, Colors.cyan),
+                  if (preview.hasImages || preview.receiptCount > 0)
+                    _buildStatPill(
+                      context,
+                      Icons.photo_library_rounded,
+                      preview.receiptCount == 1 ? 'Receipt (${preview.formattedReceiptSize})' : 'Receipts (${preview.formattedReceiptSize})',
+                      preview.receiptCount,
+                      Colors.pinkAccent,
+                    ),
                 ],
               ),
               const SizedBox(height: 20),

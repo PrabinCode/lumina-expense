@@ -75,8 +75,9 @@ class _ReceiptAttachmentWidgetState extends ConsumerState<ReceiptAttachmentWidge
     try {
       final pickedXFile = await _picker.pickImage(
         source: source,
-        maxWidth: 1600,
-        imageQuality: 85,
+        maxWidth: 1280,
+        maxHeight: 1800,
+        imageQuality: 78,
       );
 
       if (pickedXFile == null) return;

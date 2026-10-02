@@ -6,13 +6,20 @@ import 'package:encrypt/encrypt.dart' as enc;
 
 class BackupCryptoService {
   static const String headerPrefix = 'LUMINA_ENC_V1';
+  static const String headerPrefixV2 = 'LUMINA_ENC_V2';
 
-  /// Check if file content is an encrypted Lumina backup
+  /// Check if file content is an encrypted Lumina backup (V1 JSON or V2 Container)
   static bool isEncrypted(String content) {
-    return content.trim().startsWith(headerPrefix);
+    final trimmed = content.trim();
+    return trimmed.startsWith(headerPrefix) || trimmed.startsWith(headerPrefixV2);
   }
 
-  /// Encrypt plaintext JSON with AES-256 using password
+  /// Check if content is a V2 encrypted container archive
+  static bool isV2EncryptedContainer(String content) {
+    return content.trim().startsWith(headerPrefixV2);
+  }
+
+  /// Encrypt plaintext JSON with AES-256 using password (legacy format)
   static String encryptJson(String jsonString, String password) {
     final salt = _generateRandomBytes(16);
     final ivBytes = _generateRandomBytes(16);
@@ -31,10 +38,35 @@ class BackupCryptoService {
     return '$headerPrefix:$base64Salt:$base64Iv:$base64Cipher';
   }
 
-  /// Decrypt ciphertext with password and return plaintext JSON
-  static String decryptJson(String encryptedPayload, String password) {
+  /// Encrypt binary ZIP container archive bytes with AES-256 using password (V2 format)
+  static String encryptContainer(Uint8List zipBytes, String password) {
+    final salt = _generateRandomBytes(16);
+    final ivBytes = _generateRandomBytes(16);
+    final keyBytes = _deriveKey(password, salt);
+
+    final key = enc.Key(keyBytes);
+    final iv = enc.IV(ivBytes);
+    final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc, padding: 'PKCS7'));
+
+    final encrypted = encrypter.encryptBytes(zipBytes, iv: iv);
+
+    final base64Salt = base64.encode(salt);
+    final base64Iv = base64.encode(ivBytes);
+    final base64Cipher = encrypted.base64;
+
+    return '$headerPrefixV2:$base64Salt:$base64Iv:$base64Cipher';
+  }
+
+  /// Decrypts either a V1 (JSON string) or V2 (ZIP container bytes) encrypted payload
+  static ({bool isContainer, Uint8List? containerBytes, String? jsonString}) decryptPayload(
+    String encryptedPayload,
+    String password,
+  ) {
     final trimmed = encryptedPayload.trim();
-    if (!trimmed.startsWith(headerPrefix)) {
+    final isV2 = trimmed.startsWith(headerPrefixV2);
+    final isV1 = trimmed.startsWith(headerPrefix);
+
+    if (!isV1 && !isV2) {
       throw const FormatException('Invalid or unsupported encrypted backup header.');
     }
 
@@ -53,13 +85,27 @@ class BackupCryptoService {
     final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc, padding: 'PKCS7'));
 
     try {
-      final decrypted = encrypter.decrypt64(cipherBase64, iv: iv);
-      // Validate that decrypted payload is valid JSON
-      json.decode(decrypted);
-      return decrypted;
+      if (isV2) {
+        final decryptedBytes = encrypter.decryptBytes(enc.Encrypted.fromBase64(cipherBase64), iv: iv);
+        return (isContainer: true, containerBytes: Uint8List.fromList(decryptedBytes), jsonString: null);
+      } else {
+        final decrypted = encrypter.decrypt64(cipherBase64, iv: iv);
+        // Validate that decrypted payload is valid JSON
+        json.decode(decrypted);
+        return (isContainer: false, containerBytes: null, jsonString: decrypted);
+      }
     } catch (_) {
       throw const FormatException('Incorrect password or damaged backup file.');
     }
+  }
+
+  /// Decrypt ciphertext with password and return plaintext JSON (retains backwards compatibility)
+  static String decryptJson(String encryptedPayload, String password) {
+    final res = decryptPayload(encryptedPayload, password);
+    if (res.jsonString != null) {
+      return res.jsonString!;
+    }
+    throw const FormatException('Backup file is an encrypted container archive.');
   }
 
   static Uint8List _deriveKey(String password, Uint8List salt) {

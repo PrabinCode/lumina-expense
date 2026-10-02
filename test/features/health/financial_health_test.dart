@@ -99,7 +99,7 @@ void main() {
           amount: 100000.0,
           type: 'income',
           accountId: bankAcc.id,
-          date: Value(DateTime(now.year, now.month, 2)),
+          date: Value(DateTime(now.year, now.month, 1, 1)),
         ),
       );
 
@@ -111,7 +111,7 @@ void main() {
           amount: 30000.0,
           type: 'expense',
           accountId: bankAcc.id,
-          date: Value(DateTime(now.year, now.month, 5)),
+          date: Value(DateTime(now.year, now.month, 1, 2)),
         ),
       );
 
@@ -156,7 +156,7 @@ void main() {
           type: 'expense',
           accountId: bankAcc.id,
           categoryId: Value(foodCategory.id),
-          date: Value(DateTime(now.year, now.month, 3)),
+          date: Value(DateTime(now.year, now.month, 1, 1)),
         ),
       );
 

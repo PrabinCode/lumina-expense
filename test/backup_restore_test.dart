@@ -1,9 +1,12 @@
 import 'dart:io';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:excel_plus/excel_plus.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumina_expense/core/database/app_database.dart';
+import 'package:lumina_expense/core/services/receipt_storage_service.dart';
 import 'package:lumina_expense/features/backup/services/backup_restore_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,15 +14,32 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late AppDatabase db;
   late BackupRestoreService backupService;
+  late Directory mockTempDir;
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    mockTempDir = Directory.systemTemp.createTempSync('lumina_mock_paths_');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (MethodCall methodCall) async {
+        return mockTempDir.path;
+      },
+    );
     db = AppDatabase(NativeDatabase.memory());
     backupService = BackupRestoreService(db);
   });
 
   tearDown(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      null,
+    );
     await db.close();
+    if (mockTempDir.existsSync()) {
+      mockTempDir.deleteSync(recursive: true);
+    }
   });
 
   test('Seed demo data populates categories, transactions, budgets, and debts', () async {
@@ -278,6 +298,107 @@ void main() {
 
     final restoredTxs = await db.select(db.transactions).get();
     expect(restoredTxs.length, preview.transactionCount);
+
+    tempDir.deleteSync(recursive: true);
+  });
+
+  test('Creates unified ZIP container (.lumina), bundles receipts, and restores extracted receipts', () async {
+    await backupService.seedDemoData();
+
+    // 1. Create a dummy receipt image file in the receipts directory
+    final storage = ReceiptStorageService();
+    final receiptsDir = await storage.getReceiptsDirectory();
+    if (!receiptsDir.existsSync()) {
+      receiptsDir.createSync(recursive: true);
+    }
+    final receiptFile = File('${receiptsDir.path}/receipt_test_photo.jpg');
+    await receiptFile.writeAsBytes(List.filled(256, 123));
+
+    // 2. Attach receipt to a transaction
+    final txs = await db.select(db.transactions).get();
+    final firstTx = txs.first;
+    await (db.update(db.transactions)..where((t) => t.id.equals(firstTx.id))).write(
+      TransactionsCompanion(
+        receiptPath: Value('receipts/receipt_test_photo.jpg'),
+      ),
+    );
+
+    // 3. Create backup container (.lumina)
+    final tempDir = Directory.systemTemp.createTempSync('lumina_container_test');
+    final filePath = await backupService.createBackup(targetDir: tempDir.path);
+
+    expect(File(filePath).existsSync(), true);
+    expect(filePath.endsWith('.lumina'), true);
+
+    // 4. Inspect container preview
+    final preview = await backupService.inspectBackupFile(filePath);
+    expect(preview.isContainer, true);
+    expect(preview.hasImages, true);
+    expect(preview.receiptCount, 1);
+    expect(preview.receiptSizeBytes, 256);
+
+    // 5. Delete local receipt and clear db
+    await receiptFile.delete();
+    expect(receiptFile.existsSync(), false);
+    await db.delete(db.transactions).go();
+
+    // 6. Restore from .lumina archive
+    await backupService.restoreFromFile(filePath);
+
+    // 7. Verify transaction restored with receipt path and physical file restored on disk!
+    final restoredTx = await (db.select(db.transactions)..where((t) => t.id.equals(firstTx.id))).getSingle();
+    expect(restoredTx.receiptPath, 'receipts/receipt_test_photo.jpg');
+
+    final restoredReceiptFile = await storage.resolveReceiptFile(restoredTx.receiptPath);
+    expect(restoredReceiptFile, isNotNull);
+    expect(restoredReceiptFile!.existsSync(), true);
+    expect(await restoredReceiptFile.length(), 256);
+
+    tempDir.deleteSync(recursive: true);
+  });
+
+  test('Creates encrypted ZIP container (.lumina.enc), bundles receipts, and restores with password', () async {
+    await backupService.seedDemoData();
+
+    final storage = ReceiptStorageService();
+    final receiptsDir = await storage.getReceiptsDirectory();
+    if (!receiptsDir.existsSync()) {
+      receiptsDir.createSync(recursive: true);
+    }
+    final receiptFile = File('${receiptsDir.path}/receipt_enc_photo.jpg');
+    await receiptFile.writeAsBytes(List.filled(512, 77));
+
+    final txs = await db.select(db.transactions).get();
+    final firstTx = txs.first;
+    await (db.update(db.transactions)..where((t) => t.id.equals(firstTx.id))).write(
+      TransactionsCompanion(
+        receiptPath: Value('receipts/receipt_enc_photo.jpg'),
+      ),
+    );
+
+    final tempDir = Directory.systemTemp.createTempSync('lumina_enc_container_test');
+    final filePath = await backupService.createBackup(
+      targetDir: tempDir.path,
+      password: 'SecretPassword99!',
+    );
+
+    expect(filePath.endsWith('.lumina.enc'), true);
+
+    final preview = await backupService.inspectBackupFile(filePath, password: 'SecretPassword99!');
+    expect(preview.isContainer, true);
+    expect(preview.hasImages, true);
+    expect(preview.receiptCount, 1);
+    expect(preview.receiptSizeBytes, 512);
+
+    await receiptFile.delete();
+    await db.delete(db.transactions).go();
+
+    await backupService.restoreFromFile(filePath, password: 'SecretPassword99!');
+
+    final restoredReceiptFile = await storage.resolveReceiptFile('receipts/receipt_enc_photo.jpg');
+    expect(restoredReceiptFile, isNotNull);
+    expect(restoredReceiptFile!.existsSync(), true);
+    expect(await restoredReceiptFile.length(), 512);
 
     tempDir.deleteSync(recursive: true);
   });

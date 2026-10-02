@@ -88,5 +88,21 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(goalTransactions);
           }
         },
+        beforeOpen: (details) async {
+          // Performance indexes for frequent filters, foreign key lookups, and range queries
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_transactions_to_account ON transactions(to_account_id);');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_splits_tx ON transaction_splits(transaction_id);');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_splits_cat ON transaction_splits(category_id);');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_budgets_cat ON budgets(category_id);');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_debts_settled ON debts(is_settled);');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_debt_repayments_debt ON debt_repayments(debt_id);');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_goal_tx_goal ON goal_transactions(goal_id);');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_recurring_due ON recurring_transactions(next_due_date, is_active);');
+          await customStatement('CREATE INDEX IF NOT EXISTS idx_deleted_items_type ON deleted_items(entity_type);');
+        },
       );
 }

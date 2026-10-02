@@ -50,6 +50,8 @@ dependencies:
   google_mlkit_text_recognition: ^0.14.0
   csv: ^6.0.0
   excel_plus: ^2.21.0
+  archive: ^4.0.0
+  image: ^4.2.0
 
   # Data Formats & Helpers
   intl: ^0.20.2
