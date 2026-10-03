@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import '../providers/app_preferences_provider.dart';
 import 'receipt_parser_service.dart';
 
 final receiptOcrServiceProvider = Provider<ReceiptOcrService>((ref) {
@@ -50,7 +51,11 @@ class ReceiptOcrService {
 
   /// Scans the image at [imageFilePath], extracts text via ML Kit on-device,
   /// and returns parsed financial data.
-  Future<ReceiptOcrResult> processReceiptImage(String imageFilePath) async {
+  Future<ReceiptOcrResult> processReceiptImage(
+    String imageFilePath, {
+    OcrDateFormatStrategy ocrDateStrategy = OcrDateFormatStrategy.smartProximity,
+    AppDateFormat appDateFormat = AppDateFormat.dmySlash,
+  }) async {
     if (!isOcrSupported) {
       return ReceiptOcrResult.failure(
         'On-device bill scanning is currently supported on Android and iOS.',
@@ -80,11 +85,19 @@ class ReceiptOcrService {
       final spatialText = reconstructSpatialText(recognizedText);
 
       // Parse primarily with spatially reconstructed lines
-      var parsed = _parser.parse(spatialText);
+      var parsed = _parser.parse(
+        spatialText,
+        ocrDateStrategy: ocrDateStrategy,
+        appDateFormat: appDateFormat,
+      );
 
       // If amount, date, or particulars were not found in spatial lines, cross-reference with raw text
       if (parsed.amount == null || parsed.date == null || parsed.particulars.isEmpty) {
-        final rawParsed = _parser.parse(rawText);
+        final rawParsed = _parser.parse(
+          rawText,
+          ocrDateStrategy: ocrDateStrategy,
+          appDateFormat: appDateFormat,
+        );
         parsed = ParsedReceiptData(
           amount: parsed.amount ?? rawParsed.amount,
           date: parsed.date ?? rawParsed.date,

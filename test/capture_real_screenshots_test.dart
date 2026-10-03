@@ -26,8 +26,8 @@ void main() {
     PackageInfo.setMockInitialValues(
       appName: 'Lumina Expense',
       packageName: 'com.prabincode.luminaexpense',
-      version: '1.9.0',
-      buildNumber: '10',
+      version: '1.10.0',
+      buildNumber: '11',
       buildSignature: '',
     );
     SharedPreferences.setMockInitialValues({

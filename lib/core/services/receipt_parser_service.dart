@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/app_preferences_provider.dart';
 
 final receiptParserServiceProvider = Provider<ReceiptParserService>((ref) {
   return ReceiptParserService();
@@ -192,7 +193,11 @@ class ReceiptParserService {
   ];
 
   /// Parses raw text extracted from an image and returns structured data.
-  ParsedReceiptData parse(String text) {
+  ParsedReceiptData parse(
+    String text, {
+    OcrDateFormatStrategy ocrDateStrategy = OcrDateFormatStrategy.smartProximity,
+    AppDateFormat appDateFormat = AppDateFormat.dmySlash,
+  }) {
     if (text.trim().isEmpty) {
       return ParsedReceiptData(rawText: text);
     }
@@ -204,7 +209,7 @@ class ReceiptParserService {
         .toList();
 
     final amount = extractAmount(lines);
-    final date = extractDate(lines);
+    final date = extractDate(lines, strategy: ocrDateStrategy, appDateFormat: appDateFormat);
     final merchant = extractMerchant(lines);
     final categoryHint = extractCategoryHint(text, merchant);
     final particulars = extractParticulars(lines);
@@ -460,12 +465,16 @@ class ReceiptParserService {
   }
 
   /// Extracts date from receipt text lines.
-  DateTime? extractDate(List<String> lines) {
+  DateTime? extractDate(
+    List<String> lines, {
+    OcrDateFormatStrategy strategy = OcrDateFormatStrategy.smartProximity,
+    AppDateFormat appDateFormat = AppDateFormat.dmySlash,
+  }) {
     // Pattern 1: YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD (supports 1980 - 2099, including Nepali BS years like 2075-2085)
     final isoPattern = RegExp(r'\b(19[89][0-9]|20[0-9]{2})[-/.](0[1-9]|1[0-2])[-/.](0[1-9]|[12][0-9]|3[01])\b');
 
-    // Pattern 2: DD/MM/YYYY or MM/DD/YYYY
-    final dmyPattern = RegExp(r'\b(0[1-9]|[12][0-9]|3[01])[-/.](0[1-9]|1[0-2])[-/.](19[89][0-9]|20[0-9]{2}|[2-3][0-9])\b');
+    // Pattern 2: DD/MM/YYYY or MM/DD/YYYY or DD-MM-YYYY (supports 2-digit or 4-digit years)
+    final numDatePattern = RegExp(r'\b(0?[1-9]|[12][0-9]|3[01])[-/.](0?[1-9]|[12][0-9]|3[01])[-/.](19[89][0-9]|20[0-9]{2}|[2-3][0-9])\b');
 
     // Pattern 3: Textual dates like "14-February-2025", "05/Sep/2026", "07 Sep 2026", "07-Sept-2026"
     final dmyTextPattern = RegExp(
@@ -479,41 +488,47 @@ class ReceiptParserService {
       caseSensitive: false,
     );
 
-    for (final line in lines) {
-      // Try Pattern 1 (ISO)
+    // Sort lines to prioritize explicit 'Date' / 'Dt:' lines and demote 'Miti' lines
+    final sortedLines = List<String>.from(lines);
+    sortedLines.sort((a, b) {
+      final aLower = a.toLowerCase();
+      final bLower = b.toLowerCase();
+      final aHasDate = aLower.contains('date') || aLower.contains('dt:') || aLower.contains('dt ');
+      final bHasDate = bLower.contains('date') || bLower.contains('dt:') || bLower.contains('dt ');
+      final aHasMiti = aLower.contains('miti');
+      final bHasMiti = bLower.contains('miti');
+
+      if (aHasDate && !bHasDate) return -1;
+      if (!aHasDate && bHasDate) return 1;
+      if (aHasMiti && !bHasMiti) return 1;
+      if (!aHasMiti && bHasMiti) return -1;
+      return 0;
+    });
+
+    final hasSeparateGregorianDateLine = sortedLines.any((l) {
+      final lower = l.toLowerCase();
+      return (lower.contains('date') || lower.contains('dt:')) && !lower.contains('miti');
+    });
+
+    for (final line in sortedLines) {
+      final lineLower = line.toLowerCase();
+      // If receipt has both a Gregorian Date line and a Miti line, skip the Miti line
+      if (hasSeparateGregorianDateLine && lineLower.contains('miti')) {
+        continue;
+      }
+
+      // Try Pattern 1 (ISO: YYYY-MM-DD)
       final isoMatch = isoPattern.firstMatch(line);
       if (isoMatch != null) {
         final year = int.tryParse(isoMatch.group(1)!);
         final month = int.tryParse(isoMatch.group(2)!);
         final day = int.tryParse(isoMatch.group(3)!);
-        if (year != null && month != null && day != null) {
+        if (year != null && month != null && day != null && year <= 2099) {
           return DateTime(year, month, day);
         }
       }
 
-      // Try Pattern 2 (DMY / MDY numbers)
-      final dmyMatch = dmyPattern.firstMatch(line);
-      if (dmyMatch != null) {
-        var part1 = int.tryParse(dmyMatch.group(1)!);
-        var part2 = int.tryParse(dmyMatch.group(2)!);
-        var year = int.tryParse(dmyMatch.group(3)!);
-
-        if (year != null && year < 100) {
-          year += 2000;
-        }
-
-        if (year != null && part1 != null && part2 != null) {
-          // Standard heuristic: if part1 > 12, it MUST be day
-          if (part1 > 12) {
-            return DateTime(year, part2, part1);
-          } else {
-            // Default to day = part1, month = part2
-            return DateTime(year, part2, part1);
-          }
-        }
-      }
-
-      // Try Pattern 3 (Day Month Year textual, including slashes like 05/Sep/2026)
+      // Try Pattern 3 (Day Month Year textual)
       final dmyTextMatch = dmyTextPattern.firstMatch(line);
       if (dmyTextMatch != null) {
         final day = int.tryParse(dmyTextMatch.group(1)!);
@@ -532,6 +547,71 @@ class ReceiptParserService {
         final year = int.tryParse(mdyTextMatch.group(3)!);
         if (day != null && month != null && year != null) {
           return DateTime(year, month, day);
+        }
+      }
+
+      // Try Pattern 2 (Numeric: DD/MM/YYYY or MM/DD/YYYY)
+      final numMatch = numDatePattern.firstMatch(line);
+      if (numMatch != null) {
+        final part1 = int.tryParse(numMatch.group(1)!);
+        final part2 = int.tryParse(numMatch.group(2)!);
+        var year = int.tryParse(numMatch.group(3)!);
+
+        if (year != null && year < 100) {
+          year += 2000;
+        }
+
+        if (year != null && year <= 2099 && part1 != null && part2 != null) {
+          // Unambiguous Case 1: part1 > 12 (must be DD/MM)
+          if (part1 > 12 && part2 <= 12) {
+            return DateTime(year, part2, part1);
+          }
+          // Unambiguous Case 2: part2 > 12 (must be MM/DD)
+          if (part2 > 12 && part1 <= 12) {
+            return DateTime(year, part1, part2);
+          }
+
+          // Ambiguous Case: both part1 <= 12 and part2 <= 12 (e.g. 10/02/2026)
+          if (part1 <= 12 && part2 <= 12 && part1 >= 1 && part2 >= 1) {
+            final candidateDmy = DateTime(year, part2, part1); // day=part1, month=part2
+            final candidateMdy = DateTime(year, part1, part2); // month=part1, day=part2
+
+            if (strategy == OcrDateFormatStrategy.dmy) {
+              return candidateDmy;
+            }
+            if (strategy == OcrDateFormatStrategy.mdy) {
+              return candidateMdy;
+            }
+            if (strategy == OcrDateFormatStrategy.followApp) {
+              final isAppMdy = appDateFormat == AppDateFormat.mdySlash || appDateFormat == AppDateFormat.mdyText;
+              return isAppMdy ? candidateMdy : candidateDmy;
+            }
+
+            // Strategy: smartProximity (compare with current date)
+            final now = DateTime.now();
+            final leeway = now.add(const Duration(days: 1));
+            final isDmyFuture = candidateDmy.isAfter(leeway);
+            final isMdyFuture = candidateMdy.isAfter(leeway);
+
+            if (!isMdyFuture && isDmyFuture) {
+              return candidateMdy;
+            }
+            if (!isDmyFuture && isMdyFuture) {
+              return candidateDmy;
+            }
+
+            final diffHoursDmy = (now.difference(candidateDmy).inHours).abs();
+            final diffHoursMdy = (now.difference(candidateMdy).inHours).abs();
+
+            if (diffHoursMdy < diffHoursDmy) {
+              return candidateMdy;
+            } else if (diffHoursDmy < diffHoursMdy) {
+              return candidateDmy;
+            } else {
+              final isAppMdy = appDateFormat == AppDateFormat.mdySlash || appDateFormat == AppDateFormat.mdyText;
+              return isAppMdy ? candidateMdy : candidateDmy;
+            }
+          }
         }
       }
     }

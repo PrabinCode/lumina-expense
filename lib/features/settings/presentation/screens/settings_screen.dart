@@ -24,6 +24,7 @@ import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../../recycle_bin/presentation/screens/recycle_bin_screen.dart';
 import '../../../onboarding/presentation/screens/onboarding_screen.dart';
 import 'feedback_report_sheet.dart';
+import 'regional_preferences_screen.dart';
 import 'storage_maintenance_screen.dart';
 import 'theme_selection_sheet.dart';
 
@@ -438,6 +439,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 icon: Icons.category_outlined,
                 iconColor: const Color(0xFFF97316),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoriesScreen())),
+              ),
+              const SizedBox(height: 8),
+
+              _SettingsNavTile(
+                title: 'Regional & Formatting Preferences',
+                subtitle: 'Date, time, currency grouping & receipt OCR',
+                icon: Icons.language_rounded,
+                iconColor: const Color(0xFF6366F1),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegionalPreferencesScreen())),
               ),
 
               const SizedBox(height: 24),

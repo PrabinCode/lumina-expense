@@ -2,13 +2,14 @@ import 'package:drift/drift.dart' as drift;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/providers/app_preferences_provider.dart';
 import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/services/app_review_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/app_date_formatter.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
 import '../../../../core/utils/math_evaluator.dart';
@@ -608,15 +609,16 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
 
 
   String _formatCompactDate(DateTime date) {
+    ref.watch(appPreferencesProvider);
     final now = DateTime.now();
     if (now.year == date.year && now.month == date.month && now.day == date.day) {
-      return 'Today, ${DateFormat('MMM d').format(date)}';
+      return 'Today, ${AppDateFormatter.formatDate(date)}';
     }
     final yesterday = now.subtract(const Duration(days: 1));
     if (yesterday.year == date.year && yesterday.month == date.month && yesterday.day == date.day) {
-      return 'Yesterday';
+      return 'Yesterday, ${AppDateFormatter.formatDate(date)}';
     }
-    return DateFormat('MMM d, yyyy').format(date);
+    return AppDateFormatter.formatDate(date);
   }
 
   Widget _buildDatePickerWidget(bool isDark, {String label = 'Date'}) {
@@ -1115,7 +1117,8 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                                 _titleController.text = name.length > 100 ? name.substring(0, 100) : name;
                               }
                             }
-                            if (data.particulars.isNotEmpty) {
+                            final prefs = ref.read(appPreferencesProvider);
+                            if (prefs.ocrScanNotes && data.particulars.isNotEmpty) {
                               final particularsText = data.particulars.join('\n');
                               if (_noteController.text.trim().isEmpty) {
                                 _noteController.text = particularsText;
@@ -1123,7 +1126,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                                 _noteController.text = '${_noteController.text.trim()}\n\n$particularsText';
                               }
                             }
-                            if (data.suggestedCategoryKeyword != null && _selectedCategoryId == null) {
+                            if (prefs.ocrAutoCategory && data.suggestedCategoryKeyword != null && _selectedCategoryId == null) {
                               _attemptAutoMatchCategory(data.suggestedCategoryKeyword!, categoriesAsync.valueOrNull);
                             }
                           });

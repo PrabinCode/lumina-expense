@@ -4,10 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../../core/providers/app_preferences_provider.dart';
 import '../../../../core/services/receipt_ocr_service.dart';
 import '../../../../core/services/receipt_parser_service.dart';
 import '../../../../core/services/receipt_storage_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/widgets/sonner_toast.dart';
 import 'receipt_viewer_dialog.dart';
 
@@ -129,15 +131,20 @@ class _ReceiptAttachmentWidgetState extends ConsumerState<ReceiptAttachmentWidge
 
       if (runOcr && resolvedFile != null) {
         final ocrService = ref.read(receiptOcrServiceProvider);
+        final prefs = ref.read(appPreferencesProvider);
         if (ocrService.isOcrSupported) {
-          final result = await ocrService.processReceiptImage(resolvedFile.path);
+          final result = await ocrService.processReceiptImage(
+            resolvedFile.path,
+            ocrDateStrategy: prefs.ocrDateFormat,
+            appDateFormat: prefs.dateFormat,
+          );
           if (result.isSuccess) {
             HapticFeedback.mediumImpact();
             widget.onReceiptScanned?.call(result.parsedData, savedRelativePath);
             if (result.parsedData.amount != null && result.parsedData.amount! > 0) {
               Sonner.success(
                 'Bill Scanned!',
-                description: 'Detected: ${result.parsedData.amount!.toStringAsFixed(2)}. Details auto-filled.',
+                description: 'Detected: ${CurrencyFormatter.format(result.parsedData.amount!)}. Details auto-filled.',
               );
             } else {
               Sonner.info(

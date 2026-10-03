@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/providers/app_preferences_provider.dart';
 import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
@@ -213,6 +214,7 @@ class _BudgetsScreenState extends ConsumerState<BudgetsScreen> {
   @override
   Widget build(BuildContext context) {
     ref.watch(currencyProvider);
+    ref.watch(appPreferencesProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final budgetsAsync = ref.watch(monthBudgetsProvider(_selectedMonth));
     final now = DateTime.now();
@@ -362,18 +364,24 @@ class _BudgetsScreenState extends ConsumerState<BudgetsScreen> {
                                 child: Text(
                                   '${CurrencyFormatter.format(totalSpent)} / ${CurrencyFormatter.format(totalLimit)}',
                                   style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              Text(
-                                overallRemaining >= 0
-                                    ? '${CurrencyFormatter.format(overallRemaining)} left'
-                                    : 'Over by ${CurrencyFormatter.format(-overallRemaining)}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: overallRemaining >= 0 ? AppColors.income : AppColors.expense,
+                              Flexible(
+                                child: Text(
+                                  overallRemaining >= 0
+                                      ? '${CurrencyFormatter.format(overallRemaining)} left'
+                                      : 'Over by ${CurrencyFormatter.format(-overallRemaining)}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: overallRemaining >= 0 ? AppColors.income : AppColors.expense,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.end,
                                 ),
                               ),
                             ],

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
+import '../../../../core/providers/app_preferences_provider.dart';
 import '../../../../core/providers/privacy_mask_provider.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/app_date_formatter.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
 import '../../../../core/widgets/bouncy.dart';
@@ -33,6 +34,7 @@ class InteractiveTransactionTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(appPreferencesProvider);
     final tx = item.transaction;
     final cat = item.category;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -239,7 +241,7 @@ class InteractiveTransactionTile extends ConsumerWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            '${item.account.name}${item.toAccount != null ? ' → ${item.toAccount!.name}' : ''}  •  ${DateFormat('MMM d').format(tx.date)}',
+                            '${item.account.name}${item.toAccount != null ? ' → ${item.toAccount!.name}' : ''}  •  ${AppDateFormatter.formatDate(tx.date)}',
                             style: const TextStyle(color: Colors.grey, fontSize: 11),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

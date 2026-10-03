@@ -37,8 +37,8 @@ class AppLogService {
   static final AppLogService instance = AppLogService._internal();
 
   static const int _maxLogs = 100;
-  static String appVersion = '1.9.0';
-  static String buildNumber = '10';
+  static String appVersion = '1.10.0';
+  static String buildNumber = '11';
   final Queue<LogEntry> _logs = Queue<LogEntry>();
 
   static void initialize() {

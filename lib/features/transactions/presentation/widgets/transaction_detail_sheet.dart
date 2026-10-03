@@ -1,11 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
+import '../../../../core/providers/app_preferences_provider.dart';
 import '../../../../core/providers/privacy_mask_provider.dart';
 import '../../../../core/services/receipt_storage_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/app_date_formatter.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
 import '../../../../core/widgets/sonner_toast.dart';
@@ -93,6 +94,7 @@ class TransactionDetailSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(appPreferencesProvider);
     final tx = item.transaction;
     final cat = item.category;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -235,7 +237,7 @@ class TransactionDetailSheet extends ConsumerWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        DateFormat('EEE, MMM d, yyyy • h:mm a').format(tx.date),
+                        AppDateFormatter.formatDateTime(tx.date),
                         textAlign: TextAlign.end,
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                       ),

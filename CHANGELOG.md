@@ -10,6 +10,29 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Fixed` - for any bug fixes.
 - `Other` - for technical and release chores.
 
+## [v1.10.0] - 2026-10-04
+### Added
+- **Regional & Formatting Preferences Suite**:
+  - **Number Grouping**: Choose between South Asian / Nepali Lakhs and Crores (`12,34,56,789.00`) and International standard (`123,456,789.00`).
+  - **Customizable Date & Time Formats**: User-selectable date display (`DD/MM/YYYY`, `MM/DD/YYYY`, `YYYY-MM-DD`, `DD MMM YYYY`, `MMM DD, YYYY`) and clock formats (12-Hour AM/PM vs. 24-Hour Military).
+  - **Currency Symbol Placement**: Configurable symbol placement (Prefix before amount vs. Suffix after amount).
+  - **Decimal Display Modes**: Options for Always 2 Decimals (`.00`), Hide if Whole Number, or Integers Only (Rounded).
+  - **First Day of the Week**: Choose between Sunday (standard in Nepal/US) and Monday (ISO standard).
+  - **Tap-to-Select Modal Sheets**: Sleek bottom sheets with radio checks and live formatted previews for every setting.
+- **Intelligent Receipt OCR & Smart Proximity Scanning**:
+  - **Smart Proximity Date Disambiguation**: Intelligently resolves ambiguous receipt dates (e.g., `10/02/2026` as October 2 vs. Feb 10 based on proximity to current date).
+  - **Configurable Ambiguous Date Strategies**: Smart Proximity (Recommended), Follow App Format, Day First (DD/MM), or Month First (MM/DD).
+  - **Scan Items into Note & Remarks**: Optional toggle to auto-fill Note & Remarks with item descriptions and quantities extracted from receipts.
+  - **Receipt Image Privacy & Cropping**: Built-in image cropping tool, `.nomedia` storage protection to keep receipt images hidden from public Android photo galleries, and efficient image compression.
+- **Integrated 4-Column Calculator Keypad**:
+  - Built-in arithmetic evaluation (`+`, `-`, `×`, `÷`) directly within transaction input with live evaluation preview badge.
+
+### Fixed
+- **Budget Card Large Number Safeguards**: Added text truncation and flexible wrapping safeguards to budget headers and remaining allowance cards to prevent layout breaks on large numbers.
+- **Number Grouping Alignment**: Fixed setting tile layout and horizontal spacing in preferences screen.
+
+---
+
 ## [v1.9.0] - 2026-09-16
 ### Added
 - **Complete Multi-Sheet Native Excel Workbook (`.xlsx`) Export**:
