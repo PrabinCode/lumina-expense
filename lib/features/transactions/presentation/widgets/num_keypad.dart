@@ -30,6 +30,7 @@ class NumKeypad extends StatelessWidget {
             _TactileKeypadButton(text: '1', onTap: () => onKeyPressed('1'), accentColor: accent),
             _TactileKeypadButton(text: '2', onTap: () => onKeyPressed('2'), accentColor: accent),
             _TactileKeypadButton(text: '3', onTap: () => onKeyPressed('3'), accentColor: accent),
+            _TactileKeypadButton(text: '÷', isOperator: true, onTap: () => onKeyPressed('÷'), accentColor: accent),
           ],
         ),
         Row(
@@ -37,6 +38,7 @@ class NumKeypad extends StatelessWidget {
             _TactileKeypadButton(text: '4', onTap: () => onKeyPressed('4'), accentColor: accent),
             _TactileKeypadButton(text: '5', onTap: () => onKeyPressed('5'), accentColor: accent),
             _TactileKeypadButton(text: '6', onTap: () => onKeyPressed('6'), accentColor: accent),
+            _TactileKeypadButton(text: '×', isOperator: true, onTap: () => onKeyPressed('×'), accentColor: accent),
           ],
         ),
         Row(
@@ -44,6 +46,7 @@ class NumKeypad extends StatelessWidget {
             _TactileKeypadButton(text: '7', onTap: () => onKeyPressed('7'), accentColor: accent),
             _TactileKeypadButton(text: '8', onTap: () => onKeyPressed('8'), accentColor: accent),
             _TactileKeypadButton(text: '9', onTap: () => onKeyPressed('9'), accentColor: accent),
+            _TactileKeypadButton(text: '−', isOperator: true, onTap: () => onKeyPressed('−'), accentColor: accent),
           ],
         ),
         Row(
@@ -56,6 +59,7 @@ class NumKeypad extends StatelessWidget {
               onLongPress: onClear,
               accentColor: accent,
             ),
+            _TactileKeypadButton(text: '+', isOperator: true, onTap: () => onKeyPressed('+'), accentColor: accent),
           ],
         ),
       ],
@@ -69,6 +73,7 @@ class _TactileKeypadButton extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final Color accentColor;
+  final bool isOperator;
 
   const _TactileKeypadButton({
     this.text,
@@ -76,6 +81,7 @@ class _TactileKeypadButton extends StatefulWidget {
     required this.onTap,
     this.onLongPress,
     required this.accentColor,
+    this.isOperator = false,
   });
 
   @override
@@ -205,15 +211,19 @@ class _TactileKeypadButtonState extends State<_TactileKeypadButton>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final accent = widget.accentColor;
 
-    final idleBg = isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant;
-    final idleBorder = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.black.withValues(alpha: 0.06);
-    final textBaseColor = isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
+    final idleBg = widget.isOperator
+        ? accent.withValues(alpha: isDark ? 0.15 : 0.09)
+        : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant);
+    final idleBorder = widget.isOperator
+        ? accent.withValues(alpha: isDark ? 0.35 : 0.24)
+        : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06));
+    final textBaseColor = widget.isOperator
+        ? accent
+        : (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary);
 
     return Expanded(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.5),
+        padding: const EdgeInsets.symmetric(horizontal: 3.0, vertical: 2.5),
         child: Listener(
           onPointerDown: _onPointerDown,
           onPointerMove: _onPointerMove,
@@ -229,13 +239,13 @@ class _TactileKeypadButtonState extends State<_TactileKeypadButton>
 
                 final activeBg = Color.lerp(
                   idleBg,
-                  accent.withValues(alpha: isDark ? 0.22 : 0.14),
+                  accent.withValues(alpha: isDark ? 0.26 : 0.18),
                   hVal,
                 )!;
 
                 final activeBorderColor = Color.lerp(
                   idleBorder,
-                  accent.withValues(alpha: isDark ? 0.65 : 0.50),
+                  accent.withValues(alpha: isDark ? 0.75 : 0.60),
                   hVal,
                 )!;
 
@@ -268,15 +278,17 @@ class _TactileKeypadButtonState extends State<_TactileKeypadButton>
                         end: Alignment.bottomCenter,
                         colors: [
                           Color.lerp(
-                            isDark
-                                ? Colors.white.withValues(alpha: 0.04)
-                                : Colors.white.withValues(alpha: 0.70),
-                            accent.withValues(alpha: isDark ? 0.28 : 0.20),
+                            widget.isOperator
+                                ? accent.withValues(alpha: isDark ? 0.20 : 0.14)
+                                : (isDark
+                                    ? Colors.white.withValues(alpha: 0.04)
+                                    : Colors.white.withValues(alpha: 0.70)),
+                            accent.withValues(alpha: isDark ? 0.32 : 0.24),
                             hVal,
                           )!,
                           Color.lerp(
                             idleBg,
-                            accent.withValues(alpha: isDark ? 0.16 : 0.10),
+                            accent.withValues(alpha: isDark ? 0.20 : 0.12),
                             hVal,
                           )!,
                         ],
@@ -286,8 +298,8 @@ class _TactileKeypadButtonState extends State<_TactileKeypadButton>
                         ? Text(
                             widget.text!,
                             style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w600,
+                              fontSize: widget.isOperator ? 24 : 22,
+                              fontWeight: widget.isOperator ? FontWeight.bold : FontWeight.w600,
                               color: Color.lerp(
                                 textBaseColor,
                                 accent,

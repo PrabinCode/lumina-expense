@@ -11,6 +11,7 @@ import '../../../../core/services/app_review_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
+import '../../../../core/utils/math_evaluator.dart';
 import '../../../../core/widgets/sliding_pill_control.dart';
 import '../../../../core/widgets/sonner_toast.dart';
 import '../../../../core/widgets/spring_shake.dart';
@@ -63,6 +64,8 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   final GlobalKey<SpringShakeState> _shakeKey = GlobalKey<SpringShakeState>();
   late String _type;
   String _amountStr = '0';
+  String? _liveEvaluatedPreview;
+  String? _mathError;
   final _titleController = TextEditingController();
   final _noteController = TextEditingController();
   final _tagInputController = TextEditingController();
@@ -168,39 +171,132 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     });
   }
 
-  void _onKeypadPress(String val) {
-    if (val != '.') {
-      final digitCount = _amountStr == '0' ? 0 : _amountStr.replaceAll('.', '').length;
-      if (digitCount >= 15) {
-        return; // Max 15 numbers can be inserted
-      }
+  double _getCurrentAmountValue() {
+    if (MathEvaluator.hasMathOperators(_amountStr)) {
+      return MathEvaluator.evaluateLivePreview(_amountStr) ?? 0.0;
     }
+    return double.tryParse(_amountStr) ?? 0.0;
+  }
+
+  void _updateLivePreview() {
+    if (MathEvaluator.hasMathOperators(_amountStr)) {
+      final evaluated = MathEvaluator.evaluateLivePreview(_amountStr);
+      if (evaluated != null) {
+        _liveEvaluatedPreview = MathEvaluator.formatResult(evaluated);
+        _mathError = null;
+      } else {
+        if (_amountStr.contains('÷') || _amountStr.contains('/')) {
+          _liveEvaluatedPreview = null;
+          _mathError = 'Cannot divide by 0';
+        } else {
+          _liveEvaluatedPreview = null;
+          _mathError = null;
+        }
+      }
+    } else {
+      _liveEvaluatedPreview = null;
+      _mathError = null;
+    }
+  }
+
+  void _onKeypadPress(String val) {
     setState(() {
-      if (_amountStr == '0' && val != '.') {
+      final isOp = val == '+' || val == '−' || val == '-' || val == '×' || val == '÷';
+
+      if (isOp) {
+        if (_amountStr == '0') return; // Do not start with operator
+
+        var trimmed = _amountStr.trim();
+        // If last character is an operator, swap it
+        if (trimmed.endsWith('+') ||
+            trimmed.endsWith('−') ||
+            trimmed.endsWith('-') ||
+            trimmed.endsWith('×') ||
+            trimmed.endsWith('÷')) {
+          trimmed = trimmed.substring(0, trimmed.length - 1).trim();
+          _amountStr = '$trimmed $val ';
+        } else {
+          _amountStr = '$trimmed $val ';
+        }
+        _updateLivePreview();
+        return;
+      }
+
+      // Handle dot (.)
+      if (val == '.') {
+        final segments = _amountStr.split(RegExp(r'[+\-−*×/÷]'));
+        final currentSegment = segments.isNotEmpty ? segments.last.trim() : '';
+        if (currentSegment.contains('.')) {
+          return; // Prevent multiple decimal points in current operand
+        }
+        if (currentSegment.isEmpty) {
+          _amountStr += '0.';
+        } else {
+          _amountStr += '.';
+        }
+        _updateLivePreview();
+        return;
+      }
+
+      // Handle numbers 0-9
+      final segments = _amountStr.split(RegExp(r'[+\-−*×/÷]'));
+      final currentSegment = segments.isNotEmpty ? segments.last.trim() : '';
+
+      // Limit max 2 decimal digits per operand
+      if (currentSegment.contains('.') && currentSegment.split('.')[1].length >= 2) {
+        return;
+      }
+
+      // Limit max digits per operand
+      if (currentSegment.replaceAll('.', '').length >= 12) {
+        return;
+      }
+
+      if (_amountStr == '0') {
         _amountStr = val;
-      } else if (val == '.' && _amountStr.contains('.')) {
-        return; // Prevent multiple decimal points
-      } else if (_amountStr.contains('.') && _amountStr.split('.')[1].length >= 2) {
-        return; // Max 2 decimal digits
+      } else if (currentSegment == '0' && val != '0') {
+        // Replace leading 0 in segment with typed digit (e.g. "120 + 0" -> "120 + 5")
+        final lastZeroIdx = _amountStr.lastIndexOf('0');
+        if (lastZeroIdx >= 0) {
+          _amountStr = _amountStr.substring(0, lastZeroIdx) + val;
+        } else {
+          _amountStr += val;
+        }
       } else {
         _amountStr += val;
       }
+
+      _updateLivePreview();
     });
   }
 
   void _onKeypadDelete() {
     setState(() {
-      if (_amountStr.length > 1) {
-        _amountStr = _amountStr.substring(0, _amountStr.length - 1);
+      var trimmed = _amountStr.trim();
+      // If trailing operator, remove operator and surrounding spaces
+      if (trimmed.endsWith('+') ||
+          trimmed.endsWith('−') ||
+          trimmed.endsWith('-') ||
+          trimmed.endsWith('×') ||
+          trimmed.endsWith('÷')) {
+        trimmed = trimmed.substring(0, trimmed.length - 1).trim();
+        _amountStr = trimmed.isEmpty ? '0' : trimmed;
+      } else if (_amountStr.length > 1) {
+        _amountStr = _amountStr.substring(0, _amountStr.length - 1).trimRight();
+        if (_amountStr.isEmpty) _amountStr = '0';
       } else {
         _amountStr = '0';
       }
+
+      _updateLivePreview();
     });
   }
 
   void _onKeypadClear() {
     setState(() {
       _amountStr = '0';
+      _liveEvaluatedPreview = null;
+      _mathError = null;
     });
   }
 
@@ -210,7 +306,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
       if (_isSplitMode && _splitItems.isEmpty) {
         final defaultCat1 = _selectedCategoryId ?? (categories.isNotEmpty ? categories.first.id : null);
         final defaultCat2 = categories.length > 1 ? categories[1].id : defaultCat1;
-        final totalAmount = double.tryParse(_amountStr) ?? 0.0;
+        final totalAmount = _getCurrentAmountValue();
         final half = (totalAmount / 2).toStringAsFixed(2);
         final halfVal = double.tryParse(half) ?? 0.0;
 
@@ -249,7 +345,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   }
 
   double _getRemainingSplitAmount() {
-    final total = double.tryParse(_amountStr) ?? 0.0;
+    final total = _getCurrentAmountValue();
     return total - _getAllocatedSplitSum();
   }
 
@@ -267,7 +363,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
 
   void _autoFillRemainingToLastItem() {
     if (_splitItems.isEmpty) return;
-    final total = double.tryParse(_amountStr) ?? 0.0;
+    final total = _getCurrentAmountValue();
     double currentOthers = 0;
     for (int i = 0; i < _splitItems.length - 1; i++) {
       currentOthers += _splitItems[i].amount;
@@ -321,7 +417,20 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
   }
 
   Future<void> _saveTransaction() async {
-    final amount = double.tryParse(_amountStr) ?? 0.0;
+    double amount;
+    if (MathEvaluator.hasMathOperators(_amountStr)) {
+      final evaluated = MathEvaluator.evaluate(_amountStr);
+      if (evaluated == null || evaluated <= 0) {
+        _shakeKey.currentState?.shake();
+        Sonner.error('Invalid Math Expression', description: 'Please check your calculation');
+        return;
+      }
+      amount = evaluated;
+      _amountStr = MathEvaluator.formatResult(amount);
+    } else {
+      amount = double.tryParse(_amountStr) ?? 0.0;
+    }
+
     if (amount <= 0) {
       _shakeKey.currentState?.shake();
       Sonner.error('Invalid Amount', description: 'Please enter an amount greater than 0');
@@ -778,7 +887,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
       primaryTypeColor = AppColors.transfer;
     }
 
-    final totalAmount = double.tryParse(_amountStr) ?? 0.0;
+    final totalAmount = _getCurrentAmountValue();
     final allocatedSum = _isSplitMode ? _getAllocatedSplitSum() : totalAmount;
     final remainingSplit = _isSplitMode ? totalAmount - allocatedSum : 0.0;
     final isSplitMatched = (remainingSplit.abs() <= 0.01);
@@ -867,33 +976,60 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                             borderRadius: BorderRadius.circular(18),
                             border: Border.all(color: primaryTypeColor.withValues(alpha: 0.3), width: 1.5),
                           ),
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.center,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.baseline,
-                              textBaseline: TextBaseline.alphabetic,
-                              children: [
-                                Text(
-                                  '${CurrencyFormatter.activeCurrencySymbol} ',
-                                  style: TextStyle(
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.bold,
-                                    color: primaryTypeColor,
-                                  ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.center,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                                  textBaseline: TextBaseline.alphabetic,
+                                  children: [
+                                    Text(
+                                      '${CurrencyFormatter.activeCurrencySymbol} ',
+                                      style: TextStyle(
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.bold,
+                                        color: primaryTypeColor,
+                                      ),
+                                    ),
+                                    Text(
+                                      _amountStr,
+                                      style: TextStyle(
+                                        fontSize: 32,
+                                        fontWeight: FontWeight.w800,
+                                        color: primaryTypeColor,
+                                        fontFeatures: const [FontFeature.tabularFigures()],
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                Text(
-                                  _amountStr,
-                                  style: TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w800,
-                                    color: primaryTypeColor,
-                                    fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
+                              if (MathEvaluator.hasMathOperators(_amountStr)) ...[
+                                const SizedBox(height: 2),
+                                if (_mathError != null)
+                                  Text(
+                                    '= $_mathError',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.expense,
+                                    ),
+                                  )
+                                else if (_liveEvaluatedPreview != null)
+                                  Text(
+                                    '= ${CurrencyFormatter.activeCurrencySymbol} $_liveEvaluatedPreview',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: primaryTypeColor.withValues(alpha: 0.75),
+                                      fontFeatures: const [FontFeature.tabularFigures()],
+                                    ),
                                   ),
-                                ),
                               ],
-                            ),
+                            ],
                           ),
                         ),
                       ),

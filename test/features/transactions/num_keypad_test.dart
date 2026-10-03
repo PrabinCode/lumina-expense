@@ -29,10 +29,20 @@ void main() {
     expect(find.text('.'), findsOneWidget);
     expect(find.byIcon(Icons.backspace_rounded), findsOneWidget);
 
+    // Verify all operator keys are rendered in 4th column
+    for (final op in ['÷', '×', '−', '+']) {
+      expect(find.text(op), findsOneWidget);
+    }
+
     // Test quick tap on '7'
     await tester.tap(find.text('7'));
     await tester.pump();
     expect(pressedKeys, contains('7'));
+
+    // Test tap on '+'
+    await tester.tap(find.text('+'));
+    await tester.pump();
+    expect(pressedKeys, contains('+'));
 
     // Settle minimum hold animation
     await tester.pump(const Duration(milliseconds: 100));
