@@ -7,6 +7,7 @@ void main() {
   group('QueryParser Tests', () {
     final account = Account(
       id: 'acc1',
+      profileId: 'default_profile',
       name: 'Chase Bank',
       type: 'bank',
       initialBalance: 1000.0,
@@ -19,6 +20,7 @@ void main() {
 
     final category = Category(
       id: 'cat1',
+      profileId: 'default_profile',
       name: 'Groceries',
       type: 'expense',
       icon: 'shopping_cart',
@@ -29,6 +31,7 @@ void main() {
 
     final transaction = Transaction(
       id: 'tx1',
+      profileId: 'default_profile',
       title: 'Whole Foods Organic Groceries',
       amount: 85.50,
       type: 'expense',

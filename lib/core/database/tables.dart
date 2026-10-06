@@ -1,8 +1,24 @@
 import 'package:drift/drift.dart';
 
+/// User Profiles Table (Multi-User Profile System)
+class UserProfiles extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text().withLength(min: 1, max: 50)();
+  TextColumn get email => text().nullable()();
+  TextColumn get icon => text().withDefault(const Constant('person'))();
+  IntColumn get color => integer().withDefault(const Constant(0xFF10B981))();
+  TextColumn get currency => text().withDefault(const Constant('USD'))();
+  BoolColumn get isDefault => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Accounts / Wallets Table
 class Accounts extends Table {
   TextColumn get id => text()();
+  TextColumn get profileId => text().withDefault(const Constant('default_profile'))();
   TextColumn get name => text().withLength(min: 1, max: 50)();
   TextColumn get type => text()(); // 'cash', 'bank', 'creditCard', 'savings', 'other'
   RealColumn get initialBalance => real().withDefault(const Constant(0.0))();
@@ -19,6 +35,7 @@ class Accounts extends Table {
 /// Categories Table
 class Categories extends Table {
   TextColumn get id => text()();
+  TextColumn get profileId => text().withDefault(const Constant('default_profile'))();
   TextColumn get name => text().withLength(min: 1, max: 50)();
   TextColumn get type => text()(); // 'expense' or 'income'
   TextColumn get icon => text().withDefault(const Constant('category'))();
@@ -33,6 +50,7 @@ class Categories extends Table {
 /// Transactions Table (Income, Expense, Transfer)
 class Transactions extends Table {
   TextColumn get id => text()();
+  TextColumn get profileId => text().withDefault(const Constant('default_profile'))();
   TextColumn get title => text().withLength(min: 1, max: 100)();
   RealColumn get amount => real()();
   TextColumn get type => text()(); // 'expense', 'income', 'transfer'
@@ -68,6 +86,7 @@ class TransactionSplits extends Table {
 /// Budgets Table
 class Budgets extends Table {
   TextColumn get id => text()();
+  TextColumn get profileId => text().withDefault(const Constant('default_profile'))();
   TextColumn get categoryId => text().references(Categories, #id)();
   RealColumn get amountLimit => real()();
   TextColumn get period => text().withDefault(const Constant('monthly'))(); // 'weekly', 'monthly', 'yearly'
@@ -80,6 +99,7 @@ class Budgets extends Table {
 /// Debt / Lending (IOU) Table
 class Debts extends Table {
   TextColumn get id => text()();
+  TextColumn get profileId => text().withDefault(const Constant('default_profile'))();
   TextColumn get personName => text().withLength(min: 1, max: 100)();
   RealColumn get amount => real()();
   RealColumn get settledAmount => real().withDefault(const Constant(0.0))();
@@ -111,6 +131,7 @@ class DebtRepayments extends Table {
 /// Savings Goals & Sinking Funds Table
 class Goals extends Table {
   TextColumn get id => text()();
+  TextColumn get profileId => text().withDefault(const Constant('default_profile'))();
   TextColumn get name => text().withLength(min: 1, max: 100)();
   RealColumn get targetAmount => real()();
   RealColumn get currentAmount => real().withDefault(const Constant(0.0))();
@@ -142,6 +163,7 @@ class GoalTransactions extends Table {
 /// Subscriptions & Recurring Transactions Table
 class RecurringTransactions extends Table {
   TextColumn get id => text()();
+  TextColumn get profileId => text().withDefault(const Constant('default_profile'))();
   TextColumn get title => text().withLength(min: 1, max: 100)();
   RealColumn get amount => real()();
   TextColumn get categoryId => text().references(Categories, #id)();
@@ -161,6 +183,7 @@ class RecurringTransactions extends Table {
 /// Recycle Bin / Soft-Deleted Items Table
 class DeletedItems extends Table {
   TextColumn get id => text()();
+  TextColumn get profileId => text().withDefault(const Constant('default_profile'))();
   TextColumn get entityId => text()();
   TextColumn get entityType => text()(); // 'transaction', 'budget', 'goal', 'debt', 'subscription', 'category'
   TextColumn get title => text().withLength(min: 1, max: 150)();

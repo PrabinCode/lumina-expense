@@ -51,5 +51,50 @@ class IconHelper {
   }
 
   static IconData getCategoryIcon(String? iconName) => getIcon(iconName);
+
+  static IconData getProfileIcon(String? iconName) {
+    switch (iconName) {
+      case 'person':
+        return Icons.person_rounded;
+      case 'work':
+      case 'business':
+      case 'office':
+        return Icons.business_center_rounded;
+      case 'home':
+        return Icons.home_rounded;
+      case 'laptop':
+      case 'freelance':
+        return Icons.laptop_mac_rounded;
+      case 'school':
+        return Icons.school_rounded;
+      case 'store':
+      case 'shopping_bag':
+        return Icons.storefront_rounded;
+      case 'wallet':
+        return Icons.account_balance_wallet_rounded;
+      case 'savings':
+        return Icons.savings_rounded;
+      case 'family':
+        return Icons.family_restroom_rounded;
+      case 'travel':
+      case 'flight':
+        return Icons.flight_takeoff_rounded;
+      case 'pets':
+        return Icons.pets_rounded;
+      case 'fitness':
+      case 'gym':
+        return Icons.fitness_center_rounded;
+      case 'heart':
+      case 'favorite':
+        return Icons.favorite_rounded;
+      case 'star':
+        return Icons.star_rounded;
+      case 'car':
+      case 'directions_car':
+        return Icons.directions_car_rounded;
+      default:
+        return Icons.person_rounded;
+    }
+  }
 }
 

@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumina_expense/core/database/app_database.dart';
 import 'package:lumina_expense/core/services/receipt_storage_service.dart';
 import 'package:lumina_expense/features/backup/services/backup_restore_service.dart';
+import 'package:lumina_expense/features/profile/data/profile_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -399,6 +400,84 @@ void main() {
     expect(restoredReceiptFile, isNotNull);
     expect(restoredReceiptFile!.existsSync(), true);
     expect(await restoredReceiptFile.length(), 512);
+
+    tempDir.deleteSync(recursive: true);
+  });
+
+  test('Multi-profile v7 backup, selective export and selective restore', () async {
+    final profileRepo = ProfileRepository(db);
+
+    // 1. Seed demo data (creates default_profile)
+    await backupService.seedDemoData();
+
+    // 2. Create a second profile 'Office'
+    final officeProfile = await profileRepo.createProfile(
+      name: 'Office Books',
+      currency: 'EUR',
+      icon: 'business',
+      color: 0xFF2563EB,
+      seedDefaults: true,
+    );
+
+    // 3. Add a transaction to the office profile
+    final officeAccounts = await (db.select(db.accounts)..where((t) => t.profileId.equals(officeProfile.id))).get();
+    expect(officeAccounts.isNotEmpty, true);
+
+    final officeCategories = await (db.select(db.categories)..where((t) => t.profileId.equals(officeProfile.id))).get();
+
+    await db.into(db.transactions).insert(
+      TransactionsCompanion.insert(
+        id: 'tx_office_test_1',
+        title: 'Office Stationary & Printer Paper',
+        amount: 85.0,
+        type: 'expense',
+        categoryId: Value(officeCategories.isNotEmpty ? officeCategories.first.id : null),
+        accountId: officeAccounts.first.id,
+        date: Value(DateTime.now()),
+        profileId: Value(officeProfile.id),
+      ),
+    );
+
+    // 4. Create full backup archive
+    final tempDir = Directory.systemTemp.createTempSync('lumina_multiprofile_test');
+    final fullBackupPath = await backupService.createBackup(targetDir: tempDir.path);
+
+    // Inspect full backup
+    final fullPreview = await backupService.inspectBackupFile(fullBackupPath);
+    expect(fullPreview.profiles.length, 2);
+    final profileNames = fullPreview.profiles.map((p) => p.name).toList();
+    expect(profileNames, contains('Office Books'));
+
+    // 5. Create selective backup archive containing only 'Office Books'
+    final selectiveBackupPath = await backupService.createBackup(
+      targetDir: tempDir.path,
+      selectedProfileIds: [officeProfile.id],
+    );
+
+    final selectivePreview = await backupService.inspectBackupFile(selectiveBackupPath);
+    expect(selectivePreview.profiles.length, 1);
+    expect(selectivePreview.profiles.first.name, 'Office Books');
+
+    // 6. Test selective restore with merge strategy
+    // Clear only office profile transactions in db
+    await (db.delete(db.transactions)..where((t) => t.profileId.equals(officeProfile.id))).go();
+    final clearedOfficeTxs = await (db.select(db.transactions)..where((t) => t.profileId.equals(officeProfile.id))).get();
+    expect(clearedOfficeTxs.isEmpty, true);
+
+    // Restore selective backup with merge strategy
+    await backupService.restoreFromFile(
+      selectiveBackupPath,
+      selectedProfileIds: [officeProfile.id],
+      strategy: RestoreStrategy.merge,
+    );
+
+    // Verify office transaction is restored while default profile data remains intact
+    final restoredOfficeTxs = await (db.select(db.transactions)..where((t) => t.profileId.equals(officeProfile.id))).get();
+    expect(restoredOfficeTxs.length, 1);
+    expect(restoredOfficeTxs.first.title, 'Office Stationary & Printer Paper');
+
+    final defaultProfileTxs = await (db.select(db.transactions)..where((t) => t.profileId.equals('default_profile'))).get();
+    expect(defaultProfileTxs.length, greaterThan(10));
 
     tempDir.deleteSync(recursive: true);
   });

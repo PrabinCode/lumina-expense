@@ -8,6 +8,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../profile/providers/profile_providers.dart';
 
 enum HealthTier {
   thriving, // 90 - 100
@@ -232,8 +233,9 @@ class FinancialHealthReport {
 
 class FinancialHealthService {
   final AppDatabase _db;
+  final String profileId;
 
-  FinancialHealthService(this._db);
+  FinancialHealthService(this._db, {this.profileId = 'default_profile'});
 
   Future<FinancialHealthReport> calculateHealthScore() async {
     final now = DateTime.now();
@@ -330,7 +332,7 @@ class FinancialHealthService {
     // ─────────────────────────────────────────────────────────────────────────
     // 2. Budget Adherence Pillar (25% weight)
     // ─────────────────────────────────────────────────────────────────────────
-    final budgets = await _db.select(_db.budgets).get();
+    final budgets = await (_db.select(_db.budgets)..where((b) => b.profileId.equals(profileId))).get();
     double budgetScore = 0.0;
     bool hasBudgets = budgets.isNotEmpty;
     int onTrackCount = 0;
@@ -568,6 +570,7 @@ class FinancialHealthService {
     // 5. Debt Freedom Pillar (10% weight)
     // ─────────────────────────────────────────────────────────────────────────
     final borrowedDebts = await (_db.select(_db.debts)
+          ..where((d) => d.profileId.equals(profileId))
           ..where((d) => d.type.equals('borrowed'))
           ..where((d) => d.isSettled.equals(false)))
         .get();
@@ -838,6 +841,7 @@ class FinancialHealthService {
 
   Future<double> _getSumForType(String type, DateTime start, DateTime end) async {
     final query = _db.select(_db.transactions)
+      ..where((t) => t.profileId.equals(profileId))
       ..where((t) => t.type.equals(type))
       ..where((t) => t.date.isBiggerOrEqualValue(start))
       ..where((t) => t.date.isSmallerOrEqualValue(end));
@@ -848,6 +852,7 @@ class FinancialHealthService {
   Future<double> _getSumForCategory(String categoryId, DateTime start, DateTime end) async {
     final directTxs = await (_db.select(_db.transactions)
           ..where((t) =>
+              t.profileId.equals(profileId) &
               t.categoryId.equals(categoryId) &
               t.type.equals('expense') &
               t.isSplit.equals(false) &
@@ -859,7 +864,8 @@ class FinancialHealthService {
     final splitRows = await (_db.select(_db.transactionSplits).join([
       innerJoin(_db.transactions, _db.transactions.id.equalsExp(_db.transactionSplits.transactionId)),
     ])
-          ..where(_db.transactionSplits.categoryId.equals(categoryId) &
+          ..where(_db.transactions.profileId.equals(profileId) &
+              _db.transactionSplits.categoryId.equals(categoryId) &
               _db.transactions.type.equals('expense') &
               _db.transactions.date.isBiggerOrEqualValue(start) &
               _db.transactions.date.isSmallerOrEqualValue(end)))
@@ -875,6 +881,7 @@ class FinancialHealthService {
 
   Future<List<double>> _getDailyExpenses(DateTime start, DateTime end) async {
     final query = _db.select(_db.transactions)
+      ..where((t) => t.profileId.equals(profileId))
       ..where((t) => t.type.equals('expense'))
       ..where((t) => t.date.isBiggerOrEqualValue(start))
       ..where((t) => t.date.isSmallerOrEqualValue(end));
@@ -891,7 +898,10 @@ class FinancialHealthService {
 
 final financialHealthProvider = StreamProvider.autoDispose<FinancialHealthReport>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return db.select(db.transactions).watch().asyncMap((_) async {
-    return FinancialHealthService(db).calculateHealthScore();
+  final profileId = ref.watch(activeProfileIdProvider);
+  return (db.select(db.transactions)..where((t) => t.profileId.equals(profileId)))
+      .watch()
+      .asyncMap((_) async {
+    return FinancialHealthService(db, profileId: profileId).calculateHealthScore();
   });
 });

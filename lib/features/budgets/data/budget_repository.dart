@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
+import '../../profile/providers/profile_providers.dart';
 
 class BudgetWithProgress {
   final Budget budget;
@@ -27,8 +28,9 @@ class BudgetWithProgress {
 
 class BudgetRepository {
   final AppDatabase _db;
+  final String profileId;
 
-  BudgetRepository(this._db);
+  BudgetRepository(this._db, [this.profileId = 'default_profile']);
 
   Future<List<BudgetWithProgress>> getBudgetsWithProgress(DateTime month) async {
     final startOfMonth = DateTime(month.year, month.month, 1);
@@ -39,7 +41,7 @@ class BudgetRepository {
 
     final query = _db.select(b).join([
       innerJoin(cat, cat.id.equalsExp(b.categoryId)),
-    ]);
+    ])..where(b.profileId.equals(profileId));
 
     final rows = await query.get();
     if (rows.isEmpty) return [];
@@ -47,6 +49,7 @@ class BudgetRepository {
     // Pre-fetch all direct expenses for the month in a single query
     final directTxs = await (_db.select(_db.transactions)
           ..where((t) =>
+              t.profileId.equals(profileId) &
               t.type.equals('expense') &
               t.isSplit.equals(false) &
               t.date.isBiggerOrEqualValue(startOfMonth) &
@@ -57,7 +60,8 @@ class BudgetRepository {
     final splitRows = await (_db.select(_db.transactionSplits).join([
       innerJoin(_db.transactions, _db.transactions.id.equalsExp(_db.transactionSplits.transactionId)),
     ])
-          ..where(_db.transactions.type.equals('expense') &
+          ..where(_db.transactions.profileId.equals(profileId) &
+              _db.transactions.type.equals('expense') &
               _db.transactions.date.isBiggerOrEqualValue(startOfMonth) &
               _db.transactions.date.isSmallerOrEqualValue(endOfMonth)))
         .get();
@@ -144,11 +148,13 @@ class BudgetRepository {
   }
 
   Future<void> createBudget(BudgetsCompanion budget) {
-    return _db.into(_db.budgets).insert(budget);
+    final withProfile = budget.profileId.present ? budget : budget.copyWith(profileId: Value(profileId));
+    return _db.into(_db.budgets).insert(withProfile);
   }
 
   Future<bool> updateBudget(BudgetsCompanion budget) {
-    return _db.update(_db.budgets).replace(budget);
+    final withProfile = budget.profileId.present ? budget : budget.copyWith(profileId: Value(profileId));
+    return _db.update(_db.budgets).replace(withProfile);
   }
 
   Future<int> deleteBudget(String id) {
@@ -159,6 +165,7 @@ class BudgetRepository {
     return _db.into(_db.budgets).insert(
           BudgetsCompanion.insert(
             id: budget.id,
+            profileId: Value(budget.profileId),
             categoryId: budget.categoryId,
             amountLimit: budget.amountLimit,
             period: Value(budget.period),
@@ -173,7 +180,8 @@ class BudgetRepository {
 
 final budgetRepositoryProvider = Provider<BudgetRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return BudgetRepository(db);
+  final profileId = ref.watch(activeProfileIdProvider);
+  return BudgetRepository(db, profileId);
 });
 
 final currentMonthBudgetsProvider = StreamProvider<List<BudgetWithProgress>>((ref) {

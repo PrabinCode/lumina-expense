@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
+import '../../profile/providers/profile_providers.dart';
 
 class GoalsSummary {
   final double totalTarget;
@@ -22,11 +23,12 @@ class GoalsSummary {
 
 class GoalRepository {
   final AppDatabase _db;
+  final String profileId;
 
-  GoalRepository(this._db);
+  GoalRepository(this._db, [this.profileId = 'default_profile']);
 
   Stream<List<Goal>> watchGoals({bool? isCompleted}) {
-    final query = _db.select(_db.goals);
+    final query = _db.select(_db.goals)..where((tbl) => tbl.profileId.equals(profileId));
     if (isCompleted != null) {
       query.where((tbl) => tbl.isCompleted.equals(isCompleted));
     }
@@ -39,7 +41,10 @@ class GoalRepository {
   }
 
   Future<void> createGoal(GoalsCompanion goal) {
-    return _db.into(_db.goals).insert(goal);
+    final resolved = goal.profileId.present
+        ? goal
+        : goal.copyWith(profileId: Value(profileId));
+    return _db.into(_db.goals).insert(resolved);
   }
 
   Future<bool> updateGoal(GoalsCompanion goal) {
@@ -54,6 +59,7 @@ class GoalRepository {
     return _db.into(_db.goals).insert(
           GoalsCompanion.insert(
             id: goal.id,
+            profileId: Value(goal.profileId.isEmpty ? profileId : goal.profileId),
             name: goal.name,
             targetAmount: goal.targetAmount,
             currentAmount: Value(goal.currentAmount),
@@ -176,7 +182,9 @@ class GoalRepository {
   }
 
   Stream<GoalsSummary> watchGoalsSummary() {
-    return _db.select(_db.goals).watch().map((goals) {
+    return (_db.select(_db.goals)..where((tbl) => tbl.profileId.equals(profileId)))
+        .watch()
+        .map((goals) {
       double target = 0.0;
       double saved = 0.0;
       int completed = 0;
@@ -201,7 +209,8 @@ class GoalRepository {
 
 final goalRepositoryProvider = Provider<GoalRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return GoalRepository(db);
+  final profileId = ref.watch(activeProfileIdProvider);
+  return GoalRepository(db, profileId);
 });
 
 final goalsStreamProvider = StreamProvider.family<List<Goal>, bool?>((ref, isCompleted) {

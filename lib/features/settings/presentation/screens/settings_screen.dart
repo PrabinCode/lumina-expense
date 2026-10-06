@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/providers/currency_provider.dart';
@@ -11,6 +10,7 @@ import '../../../../core/services/app_version_service.dart';
 import '../widgets/whats_new_sheet.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/icon_helper.dart';
 import '../../../accounts/presentation/screens/accounts_screen.dart';
 import '../../../app_lock/data/app_lock_service.dart';
 import '../../../backup/presentation/screens/backup_screen.dart';
@@ -19,6 +19,9 @@ import '../../../categories/presentation/screens/categories_screen.dart';
 import '../../../debts/presentation/screens/debts_screen.dart';
 import '../../../goals/presentation/screens/goals_screen.dart';
 import '../../../health/presentation/screens/financial_health_screen.dart';
+import '../../../profile/presentation/widgets/edit_profile_dialog.dart';
+import '../../../profile/presentation/widgets/profile_switcher_sheet.dart';
+import '../../../profile/providers/profile_providers.dart';
 import '../../../subscriptions/presentation/screens/subscriptions_screen.dart';
 import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../../recycle_bin/presentation/screens/recycle_bin_screen.dart';
@@ -36,155 +39,26 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  String _userName = '';
-  String _userEmail = '';
   String _appVersion = AppVersionInfo.currentVersion;
   String _buildNumber = AppVersionInfo.currentBuildNumber;
 
   @override
   void initState() {
     super.initState();
-    _loadUserProfile();
+    _loadAppVersion();
   }
 
-  Future<void> _loadUserProfile() async {
-    final prefs = await SharedPreferences.getInstance();
-    PackageInfo? packageInfo;
+  Future<void> _loadAppVersion() async {
     try {
-      packageInfo = await PackageInfo.fromPlatform();
-    } catch (e) {
-      debugPrint('PackageInfo error: $e');
-    }
-
-    if (mounted) {
-      setState(() {
-        _userName = prefs.getString('user_profile_name') ?? '';
-        _userEmail = prefs.getString('user_profile_email') ?? '';
-        if (packageInfo != null && packageInfo.version.isNotEmpty) {
+      final packageInfo = await PackageInfo.fromPlatform();
+      if (mounted && packageInfo.version.isNotEmpty) {
+        setState(() {
           _appVersion = packageInfo.version;
           _buildNumber = packageInfo.buildNumber.isNotEmpty ? packageInfo.buildNumber : AppVersionInfo.currentBuildNumber;
-        }
-      });
-    }
-  }
-
-  Future<void> _editUserProfile() async {
-    final nameController = TextEditingController(text: _userName);
-    final emailController = TextEditingController(text: _userEmail);
-
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        return SafeArea(
-          top: false,
-          bottom: true,
-          child: Container(
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 12),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Edit User Profile',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () => Navigator.pop(context, false),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: nameController,
-                        autofocus: true,
-                        decoration: InputDecoration(
-                          labelText: 'Your Name',
-                          hintText: 'e.g. Alex Smith',
-                          prefixIcon: const Icon(Icons.person_outline_rounded),
-                          filled: true,
-                          fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: InputDecoration(
-                          labelText: 'Email Address',
-                          hintText: 'e.g. alex@example.com',
-                          prefixIcon: const Icon(Icons.mail_outline_rounded),
-                          filled: true,
-                          fillColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            elevation: 0,
-                          ),
-                          onPressed: () => Navigator.pop(context, true),
-                          child: const Text('Save Profile', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-
-    if (saved == true) {
-      final prefs = await SharedPreferences.getInstance();
-      final name = nameController.text.trim();
-      final email = emailController.text.trim();
-      await prefs.setString('user_profile_name', name);
-      await prefs.setString('user_profile_email', email);
-      setState(() {
-        _userName = name;
-        _userEmail = email;
-      });
+        });
+      }
+    } catch (e) {
+      debugPrint('PackageInfo error: $e');
     }
   }
 
@@ -209,6 +83,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final activeCurrency = ref.watch(currencyProvider);
     final lockService = ref.watch(appLockServiceProvider);
 
+    final activeProfile = ref.watch(activeProfileProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings & Preferences'),
@@ -226,7 +102,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ─── User Profile Card ───
+              // ─── Multi-Profile Manager Card ───
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
@@ -235,40 +111,117 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
                 ),
-                child: Row(
+                child: Column(
                   children: [
-                    CircleAvatar(
-                      radius: 26,
-                      backgroundColor: AppColors.primary.withValues(alpha: 0.15),
-                      child: Text(
-                        _userName.isNotEmpty ? _userName[0].toUpperCase() : 'L',
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.primary),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _userName.isNotEmpty ? _userName : 'Lumina User',
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 26,
+                          backgroundColor: activeProfile != null
+                              ? Color(activeProfile.color).withValues(alpha: 0.18)
+                              : AppColors.primary.withValues(alpha: 0.15),
+                          child: Icon(
+                            activeProfile != null
+                                ? IconHelper.getProfileIcon(activeProfile.icon)
+                                : Icons.person_rounded,
+                            size: 26,
+                            color: activeProfile != null ? Color(activeProfile.color) : AppColors.primary,
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _userEmail.isNotEmpty ? _userEmail : 'Personal Offline Vault',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      activeProfile?.name ?? 'Lumina User',
+                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: (activeProfile != null ? Color(activeProfile.color) : AppColors.primary)
+                                          .withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      activeProfile?.currency ?? 'USD',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: activeProfile != null ? Color(activeProfile.color) : AppColors.primary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                activeProfile?.email?.isNotEmpty == true
+                                    ? activeProfile!.email!
+                                    : 'Isolated Financial Book',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 20),
+                          tooltip: 'Edit Active Profile',
+                          onPressed: () {
+                            if (activeProfile != null) {
+                              EditProfileDialog.show(context, profileToEdit: activeProfile);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton.icon(
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
+                            icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                            label: const Text(
+                              'Switch Profile',
+                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onPressed: () => ProfileSwitcherSheet.show(context),
                           ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.edit_outlined, size: 20),
-                      onPressed: _editUserProfile,
-                      tooltip: 'Edit Profile',
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextButton.icon(
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                            icon: const Icon(Icons.add_rounded, size: 18),
+                            label: const Text(
+                              'New Profile',
+                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onPressed: () => EditProfileDialog.show(context),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

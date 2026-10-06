@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
+import '../../profile/providers/profile_providers.dart';
 
 class AccountWithBalance {
   final Account account;
@@ -17,11 +18,13 @@ class AccountWithBalance {
 
 class AccountRepository {
   final AppDatabase _db;
+  final String profileId;
 
-  AccountRepository(this._db);
+  AccountRepository(this._db, [this.profileId = 'default_profile']);
 
   Stream<List<Account>> watchAllAccounts({bool includeArchived = false}) {
     final query = _db.select(_db.accounts);
+    query.where((tbl) => tbl.profileId.equals(profileId));
     if (!includeArchived) {
       query.where((tbl) => tbl.isArchived.equals(false));
     }
@@ -31,6 +34,7 @@ class AccountRepository {
 
   Future<List<Account>> getAllAccounts({bool includeArchived = false}) {
     final query = _db.select(_db.accounts);
+    query.where((tbl) => tbl.profileId.equals(profileId));
     if (!includeArchived) {
       query.where((tbl) => tbl.isArchived.equals(false));
     }
@@ -42,11 +46,13 @@ class AccountRepository {
   }
 
   Future<void> createAccount(AccountsCompanion account) {
-    return _db.into(_db.accounts).insert(account);
+    final withProfile = account.profileId.present ? account : account.copyWith(profileId: Value(profileId));
+    return _db.into(_db.accounts).insert(withProfile);
   }
 
   Future<bool> updateAccount(AccountsCompanion account) {
-    return _db.update(_db.accounts).replace(account);
+    final withProfile = account.profileId.present ? account : account.copyWith(profileId: Value(profileId));
+    return _db.update(_db.accounts).replace(withProfile);
   }
 
   Future<int> setArchived(String accountId, bool isArchived) {
@@ -72,6 +78,7 @@ class AccountRepository {
     return _db.into(_db.accounts).insert(
           AccountsCompanion.insert(
             id: account.id,
+            profileId: Value(account.profileId),
             name: account.name,
             type: account.type,
             currency: Value(account.currency),
@@ -156,7 +163,8 @@ class AccountRepository {
 
 final accountRepositoryProvider = Provider<AccountRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return AccountRepository(db);
+  final profileId = ref.watch(activeProfileIdProvider);
+  return AccountRepository(db, profileId);
 });
 
 final accountsStreamProvider = StreamProvider<List<Account>>((ref) {

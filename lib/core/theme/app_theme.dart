@@ -92,6 +92,19 @@ class AppTheme {
           return TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: textSecondary);
         }),
       ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: surfaceColor,
+        contentTextStyle: TextStyle(
+          color: textPrimary,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: borderColor),
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 

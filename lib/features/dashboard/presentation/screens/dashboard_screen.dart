@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/providers/privacy_mask_provider.dart';
 import '../../../health/presentation/widgets/health_score_card.dart';
+import '../../../profile/presentation/widgets/profile_app_bar_pill.dart';
 import '../widgets/dashboard_goals_card.dart';
 import '../widgets/dashboard_subscriptions_card.dart';
 import '../widgets/quick_actions_bar.dart';
@@ -19,6 +20,7 @@ class DashboardScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -30,11 +32,18 @@ class DashboardScreen extends ConsumerWidget {
                 errorBuilder: (context, error, stackTrace) => const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF10B981), size: 24),
               ),
             ),
-            const SizedBox(width: 10),
-            const Text('Lumina Expense'),
+            const SizedBox(width: 8),
+            const Flexible(
+              child: Text(
+                'Lumina Expense',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         actions: [
+          const ProfileAppBarPill(),
+          const SizedBox(width: 4),
           IconButton(
             icon: Icon(
               isMasked ? Icons.visibility_off_rounded : Icons.visibility_rounded,

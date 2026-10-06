@@ -3,8 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../../core/database/app_database.dart';
+import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/services/app_review_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/icon_helper.dart';
+import '../../../../core/widgets/sonner_toast.dart';
+import '../../../accounts/data/account_repository.dart';
+import '../../../budgets/data/budget_repository.dart';
+import '../../../categories/data/category_repository.dart';
+import '../../../debts/data/debt_repository.dart';
+import '../../../goals/data/goal_repository.dart';
+import '../../../profile/data/profile_repository.dart';
+import '../../../profile/providers/profile_providers.dart';
+import '../../../recycle_bin/data/recycle_bin_repository.dart';
+import '../../../subscriptions/data/subscription_repository.dart';
+import '../../../transactions/data/transaction_repository.dart';
 import '../../services/backup_restore_service.dart';
 import 'csv_mapper_screen.dart';
 
@@ -32,23 +46,27 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   }
 
   Future<void> _loadData() async {
-    final service = ref.read(backupRestoreServiceProvider);
-    final path = await service.getBackupStorageDirectory();
-    final backups = await service.listLocalBackups();
-    final freq = await service.getAutoBackupFrequency();
-    final maxF = await service.getMaxBackupFiles();
-    final lastAuto = await service.getLastAutoBackupTime();
-    final incReceipts = await service.getIncludeReceipts();
+    try {
+      final service = ref.read(backupRestoreServiceProvider);
+      final path = await service.getBackupStorageDirectory();
+      final backups = await service.listLocalBackups();
+      final freq = await service.getAutoBackupFrequency();
+      final maxF = await service.getMaxBackupFiles();
+      final lastAuto = await service.getLastAutoBackupTime();
+      final incReceipts = await service.getIncludeReceipts();
 
-    if (mounted) {
-      setState(() {
-        _storagePath = path;
-        _localBackups = backups;
-        _autoFrequency = freq;
-        _maxBackups = maxF;
-        _lastAutoBackupTime = lastAuto;
-        _includeReceipts = incReceipts;
-      });
+      if (mounted) {
+        setState(() {
+          _storagePath = path;
+          _localBackups = backups;
+          _autoFrequency = freq;
+          _maxBackups = maxF;
+          _lastAutoBackupTime = lastAuto;
+          _includeReceipts = incReceipts;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading backup screen data: $e');
     }
   }
 
@@ -61,18 +79,11 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       await service.recordAutoBackupTimestamp(now);
       await _loadData();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✓ Automatic backup executed!\nSaved to: $path'),
-            backgroundColor: const Color(0xFF6366F1),
-          ),
-        );
+        Sonner.success('Auto-Backup Completed', description: 'Saved to: $path');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Auto-backup failed: $e')),
-        );
+        Sonner.error('Auto-Backup Failed', description: e.toString());
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -85,9 +96,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     if (newPath != null) {
       await _loadData();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Storage location updated to:\n$newPath')),
-        );
+        Sonner.success('Storage Location Updated', description: newPath);
       }
     }
   }
@@ -106,6 +115,17 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
         description: description,
         isNew: isNew,
       ),
+    );
+  }
+
+  Future<List<String>?> _promptProfileSelectionForBackup(List<UserProfile> profiles) async {
+    if (profiles.length <= 1) return null;
+
+    return showModalBottomSheet<List<String>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _BackupProfileSelectionSheet(profiles: profiles),
     );
   }
 
@@ -202,8 +222,17 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
     if (choice == null) return;
 
+    final profiles = await ref.read(allProfilesProvider.future);
+    List<String>? selectedProfileIds;
+    if (profiles.length > 1) {
+      if (!mounted) return;
+      selectedProfileIds = await _promptProfileSelectionForBackup(profiles);
+      if (selectedProfileIds == null) return;
+    }
+
     String? password;
     if (choice == 'encrypted') {
+      if (!mounted) return;
       password = await _promptPasswordDialog(
         title: 'Encrypt Backup',
         description: 'Set a password to cipher-lock your financial database archive with AES-256.',
@@ -215,22 +244,21 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     setState(() => _isLoading = true);
     try {
       final service = ref.read(backupRestoreServiceProvider);
-      final path = await service.createBackup(password: password);
+      final path = await service.createBackup(
+        password: password,
+        selectedProfileIds: selectedProfileIds,
+      );
       await _loadData();
       ref.read(appReviewServiceProvider).recordBackupCompleted();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${choice == "encrypted" ? "🔒 Encrypted backup" : "Backup"} created successfully!\nSaved to: $path'),
-            duration: const Duration(seconds: 4),
-          ),
+        Sonner.success(
+          choice == 'encrypted' ? 'Encrypted Backup Created' : 'Backup Created',
+          description: 'Saved to: $path',
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create backup: $e')),
-        );
+        Sonner.error('Backup Creation Failed', description: e.toString());
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -243,19 +271,11 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       final service = ref.read(backupRestoreServiceProvider);
       final path = await service.createExcelExport();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✓ Complete Excel Workbook (.xlsx) exported successfully!\nSaved to: $path'),
-            duration: const Duration(seconds: 5),
-            backgroundColor: const Color(0xFF10B981),
-          ),
-        );
+        Sonner.success('Excel Workbook Exported', description: 'Saved to: $path');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to export Excel: $e')),
-        );
+        Sonner.error('Excel Export Failed', description: e.toString());
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -268,9 +288,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       await ref.read(backupRestoreServiceProvider).exportExcelWorkbook();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Excel Share failed: $e')),
-        );
+        Sonner.error('Excel Share Failed', description: e.toString());
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -283,18 +301,11 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       final service = ref.read(backupRestoreServiceProvider);
       final path = await service.createCsvExport();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('CSV Spreadsheet exported successfully!\nSaved to: $path'),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        Sonner.success('CSV Exported', description: 'Saved to: $path');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to export CSV: $e')),
-        );
+        Sonner.error('CSV Export Failed', description: e.toString());
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -399,8 +410,17 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
     if (choice == null) return;
 
+    final profiles = await ref.read(allProfilesProvider.future);
+    List<String>? selectedProfileIds;
+    if (profiles.length > 1) {
+      if (!mounted) return;
+      selectedProfileIds = await _promptProfileSelectionForBackup(profiles);
+      if (selectedProfileIds == null) return;
+    }
+
     String? password;
     if (choice == 'encrypted') {
+      if (!mounted) return;
       password = await _promptPasswordDialog(
         title: 'Set Backup Password',
         description: 'Enter a password to encrypt the shared backup file.',
@@ -413,6 +433,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     try {
       await ref.read(backupRestoreServiceProvider).exportBackupJson(
             password: password,
+            selectedProfileIds: selectedProfileIds,
           );
     } catch (e) {
       if (mounted) {
@@ -431,9 +452,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       await ref.read(backupRestoreServiceProvider).exportTransactionsCsv();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('CSV Export failed: $e')),
-        );
+        Sonner.error('CSV Export Failed', description: e.toString());
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -448,7 +467,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
       if (!mounted) return;
 
-      final confirmed = await showModalBottomSheet<bool>(
+      final selection = await showModalBottomSheet<RestoreSelection>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
@@ -458,11 +477,76 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
         ),
       );
 
-      if (confirmed == true) {
-        await service.restoreFromFile(filePath, password: password);
+      if (selection != null) {
+        await service.restoreFromFile(
+          filePath,
+          password: password,
+          selectedProfileIds: selection.selectedProfileIds,
+          strategy: selection.strategy,
+        );
+
+        // Fetch valid profiles from database after restore
+        final allProfiles = await ref.read(profileRepositoryProvider).getAllProfiles();
+        UserProfile targetProfile = allProfiles.firstWhere((p) => p.isDefault, orElse: () => allProfiles.first);
+        if (allProfiles.isNotEmpty) {
+          final currentActiveId = ref.read(activeProfileIdProvider);
+          final currentExists = allProfiles.any((p) => p.id == currentActiveId);
+          if (currentExists) {
+            final txCount = await ref.read(profileRepositoryProvider).getTransactionCountForProfile(currentActiveId);
+            if (txCount > 0) {
+              targetProfile = allProfiles.firstWhere((p) => p.id == currentActiveId);
+            } else {
+              UserProfile? populatedProfile;
+              for (final p in allProfiles) {
+                final count = await ref.read(profileRepositoryProvider).getTransactionCountForProfile(p.id);
+                if (count > 0) {
+                  populatedProfile = p;
+                  break;
+                }
+              }
+              targetProfile = populatedProfile ?? targetProfile;
+            }
+          } else {
+            UserProfile? populatedProfile;
+            for (final p in allProfiles) {
+              final count = await ref.read(profileRepositoryProvider).getTransactionCountForProfile(p.id);
+              if (count > 0) {
+                populatedProfile = p;
+                break;
+              }
+            }
+            targetProfile = populatedProfile ?? targetProfile;
+          }
+
+          // Force set active profile and synchronize currency
+          await ref.read(activeProfileIdProvider.notifier).setActiveProfileId(targetProfile.id, force: true);
+        }
+
+        // Invalidate all app providers
+        ref.invalidate(allProfilesProvider);
+        ref.invalidate(activeProfileIdProvider);
+        ref.invalidate(activeProfileProvider);
+        ref.invalidate(transactionRepositoryProvider);
+        ref.invalidate(recentTransactionsStreamProvider);
+        ref.invalidate(currentMonthSummaryStreamProvider);
+        ref.invalidate(accountRepositoryProvider);
+        ref.invalidate(budgetRepositoryProvider);
+        ref.invalidate(categoryRepositoryProvider);
+        ref.invalidate(debtRepositoryProvider);
+        ref.invalidate(goalRepositoryProvider);
+        ref.invalidate(subscriptionRepositoryProvider);
+        ref.invalidate(recycleBinRepositoryProvider);
+        ref.invalidate(currencyProvider);
+
+        await _loadData();
+
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Database restored successfully! ✓')),
+          final restoredTxCount = allProfiles.isNotEmpty
+              ? await ref.read(profileRepositoryProvider).getTransactionCountForProfile(targetProfile.id)
+              : 0;
+          Sonner.success(
+            'Database Restored Successfully',
+            description: 'Active profile: ${targetProfile.name} • $restoredTxCount transactions loaded',
           );
         }
       }
@@ -479,9 +563,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
           }
         }
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Restore error: $e')),
-          );
+          Sonner.error('Restore Error', description: e.toString());
         }
       }
 
@@ -498,9 +580,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       await _confirmAndRestore(filePath);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('File error: $e')),
-        );
+        Sonner.error('File Error', description: e.toString());
       }
     }
   }
@@ -526,9 +606,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       await ref.read(backupRestoreServiceProvider).deleteBackup(backup.path);
       await _loadData();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup file deleted.')),
-        );
+        Sonner.success('Backup file deleted');
       }
     }
   }
@@ -567,13 +645,30 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     if (confirmed == true) {
       setState(() => _isLoading = true);
       await ref.read(backupRestoreServiceProvider).seedDemoData();
+      final defProfile = await ref.read(profileRepositoryProvider).getDefaultProfile();
+      if (defProfile != null) {
+        await ref.read(activeProfileIdProvider.notifier).setActiveProfileId(defProfile.id, force: true);
+      }
+      ref.invalidate(allProfilesProvider);
+      ref.invalidate(activeProfileIdProvider);
+      ref.invalidate(activeProfileProvider);
+      ref.invalidate(transactionRepositoryProvider);
+      ref.invalidate(recentTransactionsStreamProvider);
+      ref.invalidate(currentMonthSummaryStreamProvider);
+      ref.invalidate(accountRepositoryProvider);
+      ref.invalidate(budgetRepositoryProvider);
+      ref.invalidate(categoryRepositoryProvider);
+      ref.invalidate(debtRepositoryProvider);
+      ref.invalidate(goalRepositoryProvider);
+      ref.invalidate(subscriptionRepositoryProvider);
+      ref.invalidate(recycleBinRepositoryProvider);
+      ref.invalidate(currencyProvider);
+      await _loadData();
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('🎉 Rich demo data populated: 4 accounts, 25+ transactions, splits, budgets, goals & subscriptions!'),
-            duration: Duration(seconds: 4),
-          ),
+        Sonner.success(
+          'Sample Data Populated',
+          description: '4 accounts, 25+ transactions, budgets & goals loaded',
         );
       }
     }
@@ -1278,7 +1373,17 @@ class _PasswordPromptSheetState extends State<_PasswordPromptSheet> {
   }
 }
 
-class _RestoreConfirmSheet extends StatelessWidget {
+class RestoreSelection {
+  final List<String> selectedProfileIds;
+  final RestoreStrategy strategy;
+
+  const RestoreSelection({
+    required this.selectedProfileIds,
+    required this.strategy,
+  });
+}
+
+class _RestoreConfirmSheet extends ConsumerStatefulWidget {
   final BackupPreview preview;
   final bool isEncrypted;
 
@@ -1286,6 +1391,30 @@ class _RestoreConfirmSheet extends StatelessWidget {
     required this.preview,
     required this.isEncrypted,
   });
+
+  @override
+  ConsumerState<_RestoreConfirmSheet> createState() => _RestoreConfirmSheetState();
+}
+
+class _RestoreConfirmSheetState extends ConsumerState<_RestoreConfirmSheet> {
+  late Set<String> _selectedProfileIds;
+  RestoreStrategy _strategy = RestoreStrategy.cleanSlate;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedProfileIds = widget.preview.profiles.map((p) => p.id).toSet();
+  }
+
+  void _toggleAllProfiles() {
+    setState(() {
+      if (_selectedProfileIds.length == widget.preview.profiles.length) {
+        _selectedProfileIds.clear();
+      } else {
+        _selectedProfileIds = widget.preview.profiles.map((p) => p.id).toSet();
+      }
+    });
+  }
 
   Widget _buildStatPill(BuildContext context, IconData icon, String label, int count, Color color) {
     return Container(
@@ -1312,6 +1441,9 @@ class _RestoreConfirmSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final profiles = widget.preview.profiles;
+    final isCleanSlate = _strategy == RestoreStrategy.cleanSlate;
+    final currentProfiles = ref.watch(allProfilesProvider).valueOrNull ?? [];
 
     return Container(
       decoration: BoxDecoration(
@@ -1342,99 +1474,628 @@ class _RestoreConfirmSheet extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: (isEncrypted ? Colors.amber : AppColors.primary).withValues(alpha: 0.15),
+                      color: (widget.isEncrypted ? Colors.amber : AppColors.primary).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
-                      isEncrypted ? Icons.lock_open_rounded : Icons.settings_backup_restore_rounded,
-                      color: isEncrypted ? Colors.amber : AppColors.primary,
+                      widget.isEncrypted ? Icons.lock_open_rounded : Icons.settings_backup_restore_rounded,
+                      color: widget.isEncrypted ? Colors.amber : AppColors.primary,
                       size: 22,
                     ),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
-                      'Confirm Restore',
+                      'Restore Backup',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                     ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.pop(context, false),
+                    onPressed: () => Navigator.pop(context),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 8),
               Text(
-                'Created on ${DateFormat('MMM d, yyyy • hh:mm a').format(preview.exportDate)}',
+                'Created on ${DateFormat('MMM d, yyyy • hh:mm a').format(widget.preview.exportDate)}',
                 style: const TextStyle(fontSize: 13, color: Colors.grey),
               ),
               const SizedBox(height: 16),
-              const Text('Backup Contains:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              const Text('Archive Overview:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _buildStatPill(context, Icons.receipt_long_rounded, 'Transactions', preview.transactionCount, AppColors.primary),
-                  _buildStatPill(context, Icons.account_balance_wallet_rounded, 'Accounts', preview.accountCount, Colors.indigo),
-                  _buildStatPill(context, Icons.category_rounded, 'Categories', preview.categoryCount, Colors.teal),
-                  _buildStatPill(context, Icons.pie_chart_rounded, 'Budgets', preview.budgetCount, Colors.orange),
-                  _buildStatPill(context, Icons.handshake_rounded, 'Debts', preview.debtCount, Colors.purple),
-                  _buildStatPill(context, Icons.savings_rounded, 'Goals', preview.goalCount, Colors.pink),
-                  _buildStatPill(context, Icons.calendar_month_rounded, 'Subscriptions', preview.subscriptionCount, Colors.cyan),
-                  if (preview.hasImages || preview.receiptCount > 0)
+                  _buildStatPill(context, Icons.receipt_long_rounded, 'Transactions', widget.preview.transactionCount, AppColors.primary),
+                  _buildStatPill(context, Icons.account_balance_wallet_rounded, 'Accounts', widget.preview.accountCount, Colors.indigo),
+                  _buildStatPill(context, Icons.category_rounded, 'Categories', widget.preview.categoryCount, Colors.teal),
+                  _buildStatPill(context, Icons.pie_chart_rounded, 'Budgets', widget.preview.budgetCount, Colors.orange),
+                  _buildStatPill(context, Icons.handshake_rounded, 'Debts', widget.preview.debtCount, Colors.purple),
+                  _buildStatPill(context, Icons.savings_rounded, 'Goals', widget.preview.goalCount, Colors.pink),
+                  _buildStatPill(context, Icons.calendar_month_rounded, 'Subscriptions', widget.preview.subscriptionCount, Colors.cyan),
+                  if (widget.preview.hasImages || widget.preview.receiptCount > 0)
                     _buildStatPill(
                       context,
                       Icons.photo_library_rounded,
-                      preview.receiptCount == 1 ? 'Receipt (${preview.formattedReceiptSize})' : 'Receipts (${preview.formattedReceiptSize})',
-                      preview.receiptCount,
+                      widget.preview.receiptCount == 1 ? 'Receipt (${widget.preview.formattedReceiptSize})' : 'Receipts (${widget.preview.formattedReceiptSize})',
+                      widget.preview.receiptCount,
                       Colors.pinkAccent,
                     ),
                 ],
               ),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.expense.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.expense.withValues(alpha: 0.3)),
+
+              // ─── Device vs Backup Profiles Context Banner ───
+              if (currentProfiles.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.blue.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.devices_rounded, size: 20, color: Colors.blue),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Device: ${currentProfiles.length} Profile${currentProfiles.length > 1 ? "s" : ""} on Phone (${currentProfiles.map((p) => p.name).join(", ")})',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              profiles.length != currentProfiles.length
+                                  ? 'This backup contains ${profiles.length} profile${profiles.length > 1 ? "s" : ""} (${profiles.map((p) => p.name).join(", ")}). To preserve your existing profiles on this device, select "Merge Data" below.'
+                                  : 'This backup contains ${profiles.length} profile${profiles.length > 1 ? "s" : ""} (${profiles.map((p) => p.name).join(", ")}).',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: isDark ? Colors.white70 : Colors.black87,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: const Row(
+              ],
+
+              if (profiles.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Profiles in Backup (${_selectedProfileIds.length}/${profiles.length})',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                    if (profiles.length > 1)
+                      TextButton(
+                        onPressed: _toggleAllProfiles,
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                        child: Text(
+                          _selectedProfileIds.length == profiles.length ? 'Deselect All' : 'Select All',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.28),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: profiles.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final p = profiles[index];
+                      final isChecked = _selectedProfileIds.contains(p.id);
+                      final profileColor = Color(p.color);
+                      final existsLocally = currentProfiles.any((lp) => lp.id == p.id);
+                      return InkWell(
+                        onTap: () {
+                          setState(() {
+                            if (isChecked) {
+                              _selectedProfileIds.remove(p.id);
+                            } else {
+                              _selectedProfileIds.add(p.id);
+                            }
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: isChecked ? profileColor : Colors.transparent,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 18,
+                                backgroundColor: profileColor.withValues(alpha: 0.15),
+                                child: Icon(IconHelper.getProfileIcon(p.icon), size: 18, color: profileColor),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            p.name,
+                                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: profileColor.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            p.currency,
+                                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: profileColor),
+                                          ),
+                                        ),
+                                        if (existsLocally) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green.withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: const Text(
+                                              'On Device',
+                                              style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.green),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          '${p.accountCount} accounts • ',
+                                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                        ),
+                                        Text(
+                                          '${p.transactionCount} transactions',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: p.transactionCount > 0 ? FontWeight.w600 : FontWeight.normal,
+                                            color: p.transactionCount > 0
+                                                ? (isDark ? Colors.tealAccent : Colors.teal)
+                                                : Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Checkbox(
+                                value: isChecked,
+                                activeColor: profileColor,
+                                onChanged: (val) {
+                                  setState(() {
+                                    if (val == true) {
+                                      _selectedProfileIds.add(p.id);
+                                    } else {
+                                      _selectedProfileIds.remove(p.id);
+                                    }
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 20),
+              const Text('Restore Strategy:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _strategy = RestoreStrategy.cleanSlate),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isCleanSlate
+                              ? AppColors.expense.withValues(alpha: 0.12)
+                              : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isCleanSlate ? AppColors.expense : Colors.transparent,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.cleaning_services_rounded,
+                              size: 20,
+                              color: isCleanSlate ? AppColors.expense : Colors.grey,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Clean Slate',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: isCleanSlate ? AppColors.expense : null,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'Replace local data',
+                              style: TextStyle(fontSize: 11, color: Colors.grey),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _strategy = RestoreStrategy.merge),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: !isCleanSlate
+                              ? AppColors.primary.withValues(alpha: 0.12)
+                              : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: !isCleanSlate ? AppColors.primary : Colors.transparent,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.merge_type_rounded,
+                              size: 20,
+                              color: !isCleanSlate ? AppColors.primary : Colors.grey,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Merge Data',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: !isCleanSlate ? AppColors.primary : null,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'Keep existing profiles',
+                              style: TextStyle(fontSize: 11, color: Colors.grey),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: (isCleanSlate ? AppColors.expense : AppColors.primary).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: (isCleanSlate ? AppColors.expense : AppColors.primary).withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.warning_amber_rounded, color: AppColors.expense, size: 22),
-                    SizedBox(width: 12),
+                    Icon(
+                      isCleanSlate ? Icons.warning_amber_rounded : Icons.info_outline_rounded,
+                      color: isCleanSlate ? AppColors.expense : AppColors.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Restoring will overwrite all current local data with this backup archive.',
-                        style: TextStyle(fontSize: 13, color: AppColors.expense, fontWeight: FontWeight.w600, height: 1.3),
+                        isCleanSlate
+                            ? (currentProfiles.length > profiles.length
+                                ? 'Clean Slate: All current data on this device (${currentProfiles.length} profiles: ${currentProfiles.map((p) => p.name).join(", ")}) will be wiped and replaced with the selected backup profile(s).'
+                                : 'Clean Slate: All current data on this device will be cleared and replaced by the selected profiles.')
+                            : (currentProfiles.isNotEmpty
+                                ? 'Merge Mode: Selected profiles and their records will be imported without deleting your existing profiles (${currentProfiles.map((p) => p.name).join(", ")}).'
+                                : 'Merge Mode: Selected profiles and their records will be imported without deleting your existing profiles.'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isCleanSlate ? AppColors.expense : AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
+
+              const SizedBox(height: 20),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.expense,
+                  backgroundColor: isCleanSlate ? AppColors.expense : AppColors.primary,
                   foregroundColor: Colors.white,
                   minimumSize: const Size.fromHeight(52),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Replace & Restore', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                onPressed: _selectedProfileIds.isEmpty
+                    ? null
+                    : () {
+                        Navigator.pop(
+                          context,
+                          RestoreSelection(
+                            selectedProfileIds: _selectedProfileIds.toList(),
+                            strategy: _strategy,
+                          ),
+                        );
+                      },
+                child: Text(
+                  _selectedProfileIds.isEmpty
+                      ? 'Select at least 1 profile'
+                      : 'Restore (${_selectedProfileIds.length} ${_selectedProfileIds.length == 1 ? 'Profile' : 'Profiles'})',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
               ),
               const SizedBox(height: 8),
               Center(
                 child: TextButton(
-                  onPressed: () => Navigator.pop(context, false),
+                  onPressed: () => Navigator.pop(context),
                   child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BackupProfileSelectionSheet extends StatefulWidget {
+  final List<UserProfile> profiles;
+
+  const _BackupProfileSelectionSheet({required this.profiles});
+
+  @override
+  State<_BackupProfileSelectionSheet> createState() => _BackupProfileSelectionSheetState();
+}
+
+class _BackupProfileSelectionSheetState extends State<_BackupProfileSelectionSheet> {
+  late Set<String> _selectedIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIds = widget.profiles.map((p) => p.id).toSet();
+  }
+
+  void _toggleAll() {
+    setState(() {
+      if (_selectedIds.length == widget.profiles.length) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds = widget.profiles.map((p) => p.id).toSet();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.group_work_rounded, color: AppColors.primary, size: 22),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Select Profiles to Back Up',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Choose which profiles to include in this backup',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: _toggleAll,
+                  child: Text(
+                    _selectedIds.length == widget.profiles.length ? 'Deselect All' : 'Select All',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: widget.profiles.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final profile = widget.profiles[index];
+                  final isChecked = _selectedIds.contains(profile.id);
+                  final profileColor = Color(profile.color);
+                  return InkWell(
+                    onTap: () {
+                      setState(() {
+                        if (isChecked) {
+                          _selectedIds.remove(profile.id);
+                        } else {
+                          _selectedIds.add(profile.id);
+                        }
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isChecked ? profileColor : Colors.transparent,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundColor: profileColor.withValues(alpha: 0.15),
+                            child: Icon(
+                              IconHelper.getProfileIcon(profile.icon),
+                              size: 18,
+                              color: profileColor,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        profile.name,
+                                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (profile.isDefault) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: const Text('Default', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Currency: ${profile.currency}',
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Checkbox(
+                            value: isChecked,
+                            activeColor: profileColor,
+                            onChanged: (val) {
+                              setState(() {
+                                if (val == true) {
+                                  _selectedIds.add(profile.id);
+                                } else {
+                                  _selectedIds.remove(profile.id);
+                                }
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              onPressed: _selectedIds.isEmpty
+                  ? null
+                  : () => Navigator.pop(context, _selectedIds.toList()),
+              child: Text(
+                'Continue with ${_selectedIds.length} ${_selectedIds.length == 1 ? "Profile" : "Profiles"}',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+          ],
         ),
       ),
     );

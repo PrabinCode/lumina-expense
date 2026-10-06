@@ -4,15 +4,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
+import '../../profile/providers/profile_providers.dart';
 
 class CategoryRepository {
   final AppDatabase _db;
+  final String profileId;
   static const _keyOrderPrefix = 'category_order_';
 
-  CategoryRepository(this._db);
+  CategoryRepository(this._db, [this.profileId = 'default_profile']);
 
   Stream<List<Category>> watchCategories({String? type}) {
     final query = _db.select(_db.categories);
+    query.where((tbl) => tbl.profileId.equals(profileId));
     if (type != null) {
       query.where((tbl) => tbl.type.equals(type));
     }
@@ -23,6 +26,7 @@ class CategoryRepository {
 
   Future<List<Category>> getAllCategories({String? type}) async {
     final query = _db.select(_db.categories);
+    query.where((tbl) => tbl.profileId.equals(profileId));
     if (type != null) {
       query.where((tbl) => tbl.type.equals(type));
     }
@@ -33,7 +37,7 @@ class CategoryRepository {
   Future<List<Category>> _applyCustomOrder(List<Category> categories, String? type) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final key = '$_keyOrderPrefix${type ?? 'all'}';
+      final key = '$_keyOrderPrefix${profileId}_${type ?? 'all'}';
       final orderList = prefs.getStringList(key);
       if (orderList == null || orderList.isEmpty) {
         return categories;
@@ -56,7 +60,7 @@ class CategoryRepository {
   Future<void> saveCategoryOrder(List<String> categoryIds, String? type) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final key = '$_keyOrderPrefix${type ?? 'all'}';
+      final key = '$_keyOrderPrefix${profileId}_${type ?? 'all'}';
       await prefs.setStringList(key, categoryIds);
     } catch (_) {}
   }
@@ -66,11 +70,13 @@ class CategoryRepository {
   }
 
   Future<void> createCategory(CategoriesCompanion category) {
-    return _db.into(_db.categories).insert(category);
+    final withProfile = category.profileId.present ? category : category.copyWith(profileId: Value(profileId));
+    return _db.into(_db.categories).insert(withProfile);
   }
 
   Future<bool> updateCategory(CategoriesCompanion category) {
-    return _db.update(_db.categories).replace(category);
+    final withProfile = category.profileId.present ? category : category.copyWith(profileId: Value(profileId));
+    return _db.update(_db.categories).replace(withProfile);
   }
 
   Future<int> deleteCategory(String categoryId) {
@@ -207,7 +213,8 @@ class CategoryUsageInfo {
 
 final categoryRepositoryProvider = Provider<CategoryRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return CategoryRepository(db);
+  final profileId = ref.watch(activeProfileIdProvider);
+  return CategoryRepository(db, profileId);
 });
 
 final categoryOrderVersionProvider = StateProvider<int>((ref) => 0);

@@ -8,6 +8,7 @@ import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/utils/icon_helper.dart';
+import '../../../profile/providers/profile_providers.dart';
 import '../../../transactions/data/transaction_repository.dart';
 import '../../../transactions/presentation/widgets/interactive_transaction_tile.dart';
 import '../../domain/models/analytics_models.dart';
@@ -34,11 +35,26 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
   TimeframePeriod _currentPeriod = TimeframePeriod.month;
   int _currentTabIndex = 0;
   int _touchedSectionIndex = -1;
+  DateTime? _latestTxDate;
 
   @override
   void initState() {
     super.initState();
     _referenceDate = widget.initialMonth ?? DateTime.now();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadLatestActivityDate();
+    });
+  }
+
+  Future<void> _loadLatestActivityDate() async {
+    try {
+      final repo = ref.read(transactionRepositoryProvider);
+      final latest = await repo.getLatestTransactionDate();
+      if (!mounted) return;
+      setState(() {
+        _latestTxDate = latest;
+      });
+    } catch (_) {}
   }
 
   void _previousPeriod() {
@@ -579,6 +595,9 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
   @override
   Widget build(BuildContext context) {
     ref.watch(currencyProvider);
+    ref.listen(activeProfileIdProvider, (previous, next) {
+      _loadLatestActivityDate();
+    });
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final (startDate, endDate) = _calculateDateRange();
     final (prevStartDate, prevEndDate) = _calculatePreviousDateRange();
@@ -689,6 +708,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
               ),
             ),
 
+
             const SizedBox(height: 14),
 
             // Financial Summary Card with Savings Rate, Period Comparison & Pacing
@@ -706,6 +726,46 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
 
                 return Column(
                   children: [
+                    if (snapshot.hasData && income == 0 && expense == 0 && _latestTxDate != null &&
+                        (_referenceDate.year != _latestTxDate!.year || _referenceDate.month != _latestTxDate!.month))
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline_rounded, size: 18, color: Colors.amber),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'No transactions in this period. Most recent activity recorded in ${DateFormat('MMMM yyyy').format(_latestTxDate!)}.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.amber.shade200 : Colors.amber.shade900,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _referenceDate = DateTime(_latestTxDate!.year, _latestTxDate!.month, 1);
+                                });
+                              },
+                              style: TextButton.styleFrom(
+                                backgroundColor: Colors.amber.withValues(alpha: 0.2),
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              ),
+                              child: const Text('Jump There', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.amber)),
+                            ),
+                          ],
+                        ),
+                      ),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(

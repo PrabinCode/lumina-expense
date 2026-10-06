@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
 import '../../analytics/domain/models/analytics_models.dart';
+import '../../profile/providers/profile_providers.dart';
 
 
 
@@ -69,8 +70,9 @@ class CategorySpending {
 
 class TransactionRepository {
   final AppDatabase _db;
+  final String profileId;
 
-  TransactionRepository(this._db);
+  TransactionRepository(this._db, [this.profileId = 'default_profile']);
 
   /// Watch transactions joined with Account, Category, and Splits
   Stream<List<TransactionWithDetails>> watchTransactionsWithDetails({
@@ -91,6 +93,8 @@ class TransactionRepository {
       innerJoin(srcAcc, srcAcc.id.equalsExp(_db.transactions.accountId)),
       leftOuterJoin(dstAcc, dstAcc.id.equalsExp(_db.transactions.toAccountId)),
     ]);
+
+    query.where(_db.transactions.profileId.equals(profileId));
 
     if (startDate != null) {
       query.where(_db.transactions.date.isBiggerOrEqualValue(startDate));
@@ -148,7 +152,8 @@ class TransactionRepository {
   }
 
   Future<void> createTransaction(TransactionsCompanion tx) {
-    return _db.into(_db.transactions).insert(tx);
+    final withProfile = tx.profileId.present ? tx : tx.copyWith(profileId: Value(profileId));
+    return _db.into(_db.transactions).insert(withProfile);
   }
 
   /// Create a transaction and its splits atomically
@@ -156,8 +161,9 @@ class TransactionRepository {
     TransactionsCompanion tx,
     List<TransactionSplitsCompanion> splits,
   ) async {
+    final withProfile = tx.profileId.present ? tx : tx.copyWith(profileId: Value(profileId));
     await _db.transaction(() async {
-      await _db.into(_db.transactions).insert(tx);
+      await _db.into(_db.transactions).insert(withProfile);
       for (final split in splits) {
         await _db.into(_db.transactionSplits).insert(split);
       }
@@ -165,7 +171,8 @@ class TransactionRepository {
   }
 
   Future<bool> updateTransaction(TransactionsCompanion tx) {
-    return _db.update(_db.transactions).replace(tx);
+    final withProfile = tx.profileId.present ? tx : tx.copyWith(profileId: Value(profileId));
+    return _db.update(_db.transactions).replace(withProfile);
   }
 
   /// Update an existing transaction and rewrite its splits atomically
@@ -173,8 +180,9 @@ class TransactionRepository {
     TransactionsCompanion tx,
     List<TransactionSplitsCompanion> splits,
   ) async {
+    final withProfile = tx.profileId.present ? tx : tx.copyWith(profileId: Value(profileId));
     await _db.transaction(() async {
-      await _db.update(_db.transactions).replace(tx);
+      await _db.update(_db.transactions).replace(withProfile);
       await (_db.delete(_db.transactionSplits)
             ..where((tbl) => tbl.transactionId.equals(tx.id.value)))
           .go();
@@ -229,7 +237,7 @@ class TransactionRepository {
   /// Watch financial summary for a specific date range
   Stream<FinancialSummary> watchSummary(DateTime startDate, DateTime endDate) {
     final query = _db.select(_db.transactions)
-      ..where((tbl) => tbl.date.isBiggerOrEqualValue(startDate) & tbl.date.isSmallerOrEqualValue(endDate));
+      ..where((tbl) => tbl.profileId.equals(profileId) & tbl.date.isBiggerOrEqualValue(startDate) & tbl.date.isSmallerOrEqualValue(endDate));
 
     return query.watch().map((txs) {
       double income = 0;
@@ -249,6 +257,37 @@ class TransactionRepository {
     });
   }
 
+  /// Get one-shot financial summary for a specific date range
+  Future<FinancialSummary> getSummary(DateTime startDate, DateTime endDate) async {
+    final query = _db.select(_db.transactions)
+      ..where((tbl) => tbl.profileId.equals(profileId) & tbl.date.isBiggerOrEqualValue(startDate) & tbl.date.isSmallerOrEqualValue(endDate));
+    final txs = await query.get();
+    double income = 0;
+    double expense = 0;
+    for (final tx in txs) {
+      if (tx.type == 'income') {
+        income += tx.amount;
+      } else if (tx.type == 'expense') {
+        expense += tx.amount;
+      }
+    }
+    return FinancialSummary(
+      totalIncome: income,
+      totalExpense: expense,
+      netSavings: income - expense,
+    );
+  }
+
+  /// Get the date of the most recent transaction for this profile (if any exists)
+  Future<DateTime?> getLatestTransactionDate() async {
+    final query = _db.select(_db.transactions)
+      ..where((t) => t.profileId.equals(profileId) & (t.type.equals('expense') | t.type.equals('income')))
+      ..orderBy([(t) => OrderingTerm(expression: t.date, mode: OrderingMode.desc)])
+      ..limit(1);
+    final row = await query.getSingleOrNull();
+    return row?.date;
+  }
+
   /// Watch financial summary comparison between current period and previous period
   Stream<FinancialSummaryComparison> watchSummaryComparison(
     DateTime currentStart,
@@ -260,7 +299,7 @@ class TransactionRepository {
     final maxDate = currentEnd.isAfter(prevEnd) ? currentEnd : prevEnd;
 
     final query = _db.select(_db.transactions)
-      ..where((tbl) => tbl.date.isBiggerOrEqualValue(minDate) & tbl.date.isSmallerOrEqualValue(maxDate));
+      ..where((tbl) => tbl.profileId.equals(profileId) & tbl.date.isBiggerOrEqualValue(minDate) & tbl.date.isSmallerOrEqualValue(maxDate));
 
     return query.watch().map((allTxs) {
       double curIncome = 0;
@@ -315,12 +354,13 @@ class TransactionRepository {
     // We watch transactions and splits to trigger on updates
     final txQuery = _db.select(tx)
       ..where((t) =>
+          t.profileId.equals(profileId) &
           t.type.equals('expense') &
           t.date.isBiggerOrEqualValue(startDate) &
           t.date.isSmallerOrEqualValue(endDate));
 
     return txQuery.watch().asyncMap((expenseTxs) async {
-      final allCategories = await _db.select(cat).get();
+      final allCategories = await (_db.select(cat)..where((c) => c.profileId.equals(profileId))).get();
       final categoryMap = {for (var c in allCategories) c.id: c};
       final amounts = <String, double>{};
       double totalExpense = 0;
@@ -416,6 +456,7 @@ class TransactionRepository {
       await _db.into(_db.transactions).insert(
             TransactionsCompanion.insert(
               id: snapshot.transaction.id,
+              profileId: Value(snapshot.transaction.profileId),
               title: snapshot.transaction.title,
               amount: snapshot.transaction.amount,
               type: snapshot.transaction.type,
@@ -463,7 +504,10 @@ class TransactionRepository {
     final endOfRange = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
 
     final query = _db.select(_db.transactions)
-      ..where((t) => t.date.isBiggerOrEqualValue(startOfRange) & t.date.isSmallerOrEqualValue(endOfRange));
+      ..where((t) =>
+          t.profileId.equals(profileId) &
+          t.date.isBiggerOrEqualValue(startOfRange) &
+          t.date.isSmallerOrEqualValue(endOfRange));
 
     return query.watch().map((txs) {
       final points = <CashFlowMonthlyPoint>[];
@@ -510,12 +554,13 @@ class TransactionRepository {
 
     final velocityQuery = _db.select(_db.transactions)
       ..where((t) =>
+          t.profileId.equals(profileId) &
           t.type.equals('expense') &
           t.date.isBiggerOrEqualValue(prevMonthStart) &
           t.date.isSmallerOrEqualValue(endOfMonth));
 
     return velocityQuery.watch().asyncMap((txs) async {
-      final budgets = await _db.select(_db.budgets).get();
+      final budgets = await (_db.select(_db.budgets)..where((b) => b.profileId.equals(profileId))).get();
       final totalBudget = budgets.fold<double>(0.0, (sum, b) => sum + b.amountLimit);
 
       final curDailySums = List<double>.filled(daysInMonth + 1, 0.0);
@@ -568,6 +613,7 @@ class TransactionRepository {
   Stream<Macro503020Summary> watch50_30_20Summary(DateTime startDate, DateTime endDate) {
     final query = _db.select(_db.transactions)
       ..where((t) =>
+          t.profileId.equals(profileId) &
           t.date.isBiggerOrEqualValue(startDate) &
           t.date.isSmallerOrEqualValue(endDate));
 
@@ -625,11 +671,13 @@ class TransactionRepository {
     final prevEnd = DateTime(currentMonth.year, currentMonth.month, 0, 23, 59, 59);
 
     final query = _db.select(_db.transactions)
-      ..where((t) => t.type.equals('expense') &
+      ..where((t) =>
+          t.profileId.equals(profileId) &
+          t.type.equals('expense') &
           (t.date.isBiggerOrEqualValue(prevStart) & t.date.isSmallerOrEqualValue(curEnd)));
 
     return query.watch().asyncMap((txs) async {
-      final categories = await _db.select(_db.categories).get();
+      final categories = await (_db.select(_db.categories)..where((c) => c.profileId.equals(profileId))).get();
 
       final curSums = <String, double>{};
       final prevSums = <String, double>{};
@@ -677,7 +725,9 @@ class TransactionRepository {
   /// 5. Day-of-Week Spending Heatmap
   Stream<List<DayOfWeekSpending>> watchDayOfWeekDistribution(DateTime startDate, DateTime endDate) {
     final query = _db.select(_db.transactions)
-      ..where((t) => t.type.equals('expense') &
+      ..where((t) =>
+          t.profileId.equals(profileId) &
+          t.type.equals('expense') &
           t.date.isBiggerOrEqualValue(startDate) &
           t.date.isSmallerOrEqualValue(endDate));
 
@@ -708,7 +758,9 @@ class TransactionRepository {
   /// 6. Tag Analytics
   Stream<List<TagSpendingItem>> watchTagAnalytics(DateTime startDate, DateTime endDate) {
     final query = _db.select(_db.transactions)
-      ..where((t) => t.type.equals('expense') &
+      ..where((t) =>
+          t.profileId.equals(profileId) &
+          t.type.equals('expense') &
           t.date.isBiggerOrEqualValue(startDate) &
           t.date.isSmallerOrEqualValue(endDate));
 
@@ -742,7 +794,8 @@ class TransactionRepository {
   Stream<List<TopMerchantItem>> watchTopMerchants(DateTime startDate, DateTime endDate, {int limit = 5}) {
     final query = _db.select(_db.transactions).join([
       leftOuterJoin(_db.categories, _db.categories.id.equalsExp(_db.transactions.categoryId)),
-    ])..where(_db.transactions.type.equals('expense') &
+    ])..where(_db.transactions.profileId.equals(profileId) &
+        _db.transactions.type.equals('expense') &
         _db.transactions.date.isBiggerOrEqualValue(startDate) &
         _db.transactions.date.isSmallerOrEqualValue(endDate));
 
@@ -786,7 +839,8 @@ class TransactionRepository {
 
 final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return TransactionRepository(db);
+  final profileId = ref.watch(activeProfileIdProvider);
+  return TransactionRepository(db, profileId);
 });
 
 final recentTransactionsStreamProvider = StreamProvider<List<TransactionWithDetails>>((ref) {

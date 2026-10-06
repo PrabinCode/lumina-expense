@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
+import '../../profile/providers/profile_providers.dart';
 
 class DebtSummary {
   final double totalLent; // Money people owe me
@@ -18,11 +19,12 @@ class DebtSummary {
 
 class DebtRepository {
   final AppDatabase _db;
+  final String profileId;
 
-  DebtRepository(this._db);
+  DebtRepository(this._db, [this.profileId = 'default_profile']);
 
   Stream<List<Debt>> watchDebts({bool? isSettled, String? type}) {
-    final query = _db.select(_db.debts);
+    final query = _db.select(_db.debts)..where((tbl) => tbl.profileId.equals(profileId));
     if (isSettled != null) {
       query.where((tbl) => tbl.isSettled.equals(isSettled));
     }
@@ -38,7 +40,10 @@ class DebtRepository {
   }
 
   Future<void> createDebt(DebtsCompanion debt) {
-    return _db.into(_db.debts).insert(debt);
+    final resolved = debt.profileId.present
+        ? debt
+        : debt.copyWith(profileId: Value(profileId));
+    return _db.into(_db.debts).insert(resolved);
   }
 
   Future<bool> updateDebt(DebtsCompanion debt) {
@@ -53,6 +58,7 @@ class DebtRepository {
     return _db.into(_db.debts).insert(
           DebtsCompanion.insert(
             id: debt.id,
+            profileId: Value(debt.profileId.isEmpty ? profileId : debt.profileId),
             personName: debt.personName,
             amount: debt.amount,
             type: debt.type,
@@ -136,7 +142,9 @@ class DebtRepository {
   }
 
   Stream<DebtSummary> watchDebtSummary() {
-    return _db.select(_db.debts).watch().map((debts) {
+    return (_db.select(_db.debts)..where((tbl) => tbl.profileId.equals(profileId)))
+        .watch()
+        .map((debts) {
       double lent = 0;
       double borrowed = 0;
 
@@ -162,7 +170,8 @@ class DebtRepository {
 
 final debtRepositoryProvider = Provider<DebtRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return DebtRepository(db);
+  final profileId = ref.watch(activeProfileIdProvider);
+  return DebtRepository(db, profileId);
 });
 
 final debtsStreamProvider = StreamProvider.family<List<Debt>, bool?>((ref, isSettled) {

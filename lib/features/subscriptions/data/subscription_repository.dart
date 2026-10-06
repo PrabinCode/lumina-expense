@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
+import '../../profile/providers/profile_providers.dart';
 
 class SubscriptionWithDetails {
   final RecurringTransaction subscription;
@@ -64,8 +65,9 @@ class SubscriptionsSummary {
 
 class SubscriptionRepository {
   final AppDatabase _db;
+  final String profileId;
 
-  SubscriptionRepository(this._db);
+  SubscriptionRepository(this._db, [this.profileId = 'default_profile']);
 
   /// Watch all subscriptions joined with category and account
   Stream<List<SubscriptionWithDetails>> watchSubscriptions({bool? isActive}) {
@@ -76,7 +78,7 @@ class SubscriptionRepository {
     final query = _db.select(rec).join([
       innerJoin(cat, cat.id.equalsExp(rec.categoryId)),
       innerJoin(acc, acc.id.equalsExp(rec.accountId)),
-    ]);
+    ])..where(rec.profileId.equals(profileId));
 
     if (isActive != null) {
       query.where(rec.isActive.equals(isActive));
@@ -120,7 +122,10 @@ class SubscriptionRepository {
   }
 
   Future<void> createSubscription(RecurringTransactionsCompanion sub) {
-    return _db.into(_db.recurringTransactions).insert(sub);
+    final resolved = sub.profileId.present
+        ? sub
+        : sub.copyWith(profileId: Value(profileId));
+    return _db.into(_db.recurringTransactions).insert(resolved);
   }
 
   Future<bool> updateSubscription(RecurringTransactionsCompanion sub) {
@@ -135,6 +140,7 @@ class SubscriptionRepository {
     return _db.into(_db.recurringTransactions).insert(
           RecurringTransactionsCompanion.insert(
             id: sub.id,
+            profileId: Value(sub.profileId.isEmpty ? profileId : sub.profileId),
             title: sub.title,
             amount: sub.amount,
             categoryId: sub.categoryId,
@@ -197,6 +203,7 @@ class SubscriptionRepository {
       await _db.into(_db.transactions).insert(
             TransactionsCompanion.insert(
               id: uuid.v4(),
+              profileId: Value(sub.profileId.isEmpty ? profileId : sub.profileId),
               title: '${sub.title} (Recurring)',
               amount: sub.amount,
               type: 'expense',
@@ -221,7 +228,7 @@ class SubscriptionRepository {
     final today = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
     final dueSubs = await (_db.select(_db.recurringTransactions)
-          ..where((tbl) => tbl.isActive.equals(true) & tbl.autoLog.equals(true) & tbl.nextDueDate.isSmallerOrEqualValue(today)))
+          ..where((tbl) => tbl.profileId.equals(profileId) & tbl.isActive.equals(true) & tbl.autoLog.equals(true) & tbl.nextDueDate.isSmallerOrEqualValue(today)))
         .get();
 
     int loggedCount = 0;
@@ -233,6 +240,7 @@ class SubscriptionRepository {
         await _db.into(_db.transactions).insert(
               TransactionsCompanion.insert(
                 id: uuid.v4(),
+                profileId: Value(sub.profileId.isEmpty ? profileId : sub.profileId),
                 title: '${sub.title} (Auto-log)',
                 amount: sub.amount,
                 type: 'expense',
@@ -257,7 +265,8 @@ class SubscriptionRepository {
 
 final subscriptionRepositoryProvider = Provider<SubscriptionRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return SubscriptionRepository(db);
+  final profileId = ref.watch(activeProfileIdProvider);
+  return SubscriptionRepository(db, profileId);
 });
 
 final activeSubscriptionsStreamProvider = StreamProvider<List<SubscriptionWithDetails>>((ref) {

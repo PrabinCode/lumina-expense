@@ -6,17 +6,19 @@ import 'package:uuid/uuid.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/providers/database_provider.dart';
 import '../../../core/services/receipt_storage_service.dart';
+import '../../profile/providers/profile_providers.dart';
 
 class RecycleBinRepository {
   final AppDatabase _db;
   final ReceiptStorageService? _receiptStorage;
+  final String profileId;
   static const _uuid = Uuid();
 
-  RecycleBinRepository(this._db, [this._receiptStorage]);
+  RecycleBinRepository(this._db, [this._receiptStorage, this.profileId = 'default_profile']);
 
   /// Watch all soft-deleted items, optionally filtered by entityType
   Stream<List<DeletedItem>> watchDeletedItems({String? entityType}) {
-    final query = _db.select(_db.deletedItems);
+    final query = _db.select(_db.deletedItems)..where((tbl) => tbl.profileId.equals(profileId));
     if (entityType != null && entityType.isNotEmpty && entityType != 'all') {
       query.where((tbl) => tbl.entityType.equals(entityType));
     }
@@ -26,7 +28,9 @@ class RecycleBinRepository {
 
   /// Watch count of deleted items for badges/indicators
   Stream<int> watchDeletedCount() {
-    return _db.select(_db.deletedItems).watch().map((items) => items.length);
+    return (_db.select(_db.deletedItems)..where((tbl) => tbl.profileId.equals(profileId)))
+        .watch()
+        .map((items) => items.length);
   }
 
   /// Soft-delete a transaction and its splits into Recycle Bin
@@ -49,6 +53,7 @@ class RecycleBinRepository {
     final payload = {
       'transaction': {
         'id': tx.id,
+        'profileId': tx.profileId,
         'title': tx.title,
         'amount': tx.amount,
         'type': tx.type,
@@ -79,6 +84,7 @@ class RecycleBinRepository {
       await _db.into(_db.deletedItems).insert(
             DeletedItemsCompanion.insert(
               id: recycleId,
+              profileId: Value(tx.profileId.isEmpty ? profileId : tx.profileId),
               entityId: tx.id,
               entityType: 'transaction',
               title: tx.title,
@@ -115,6 +121,7 @@ class RecycleBinRepository {
 
     final payload = {
       'id': b.id,
+      'profileId': b.profileId,
       'categoryId': b.categoryId,
       'amountLimit': b.amountLimit,
       'period': b.period,
@@ -127,6 +134,7 @@ class RecycleBinRepository {
       await _db.into(_db.deletedItems).insert(
             DeletedItemsCompanion.insert(
               id: recycleId,
+              profileId: Value(b.profileId.isEmpty ? profileId : b.profileId),
               entityId: b.id,
               entityType: 'budget',
               title: '${cat?.name ?? "Category"} Budget',
@@ -150,6 +158,7 @@ class RecycleBinRepository {
 
     final payload = {
       'id': g.id,
+      'profileId': g.profileId,
       'name': g.name,
       'targetAmount': g.targetAmount,
       'currentAmount': g.currentAmount,
@@ -167,6 +176,7 @@ class RecycleBinRepository {
       await _db.into(_db.deletedItems).insert(
             DeletedItemsCompanion.insert(
               id: recycleId,
+              profileId: Value(g.profileId.isEmpty ? profileId : g.profileId),
               entityId: g.id,
               entityType: 'goal',
               title: g.name,
@@ -190,6 +200,7 @@ class RecycleBinRepository {
 
     final payload = {
       'id': d.id,
+      'profileId': d.profileId,
       'personName': d.personName,
       'amount': d.amount,
       'settledAmount': d.settledAmount,
@@ -207,6 +218,7 @@ class RecycleBinRepository {
       await _db.into(_db.deletedItems).insert(
             DeletedItemsCompanion.insert(
               id: recycleId,
+              profileId: Value(d.profileId.isEmpty ? profileId : d.profileId),
               entityId: d.id,
               entityType: 'debt',
               title: '${d.type == "lent" ? "Lent to" : "Borrowed from"} ${d.personName}',
@@ -230,6 +242,7 @@ class RecycleBinRepository {
 
     final payload = {
       'id': s.id,
+      'profileId': s.profileId,
       'title': s.title,
       'amount': s.amount,
       'categoryId': s.categoryId,
@@ -249,6 +262,7 @@ class RecycleBinRepository {
       await _db.into(_db.deletedItems).insert(
             DeletedItemsCompanion.insert(
               id: recycleId,
+              profileId: Value(s.profileId.isEmpty ? profileId : s.profileId),
               entityId: s.id,
               entityType: 'subscription',
               title: s.title,
@@ -274,6 +288,7 @@ class RecycleBinRepository {
     final recycleId = _uuid.v4();
     final payload = {
       'id': category.id,
+      'profileId': category.profileId,
       'name': category.name,
       'type': category.type,
       'icon': category.icon,
@@ -287,6 +302,7 @@ class RecycleBinRepository {
     await _db.into(_db.deletedItems).insert(
           DeletedItemsCompanion.insert(
             id: recycleId,
+            profileId: Value(category.profileId.isEmpty ? profileId : category.profileId),
             entityId: category.id,
             entityType: 'category',
             title: category.name,
@@ -315,6 +331,7 @@ class RecycleBinRepository {
           await _db.into(_db.transactions).insert(
                 TransactionsCompanion.insert(
                   id: t['id'],
+                  profileId: Value(t['profileId'] ?? item.profileId),
                   title: t['title'],
                   amount: (t['amount'] as num).toDouble(),
                   type: t['type'],
@@ -349,6 +366,7 @@ class RecycleBinRepository {
           await _db.into(_db.budgets).insert(
                 BudgetsCompanion.insert(
                   id: data['id'],
+                  profileId: Value(data['profileId'] ?? item.profileId),
                   categoryId: data['categoryId'],
                   amountLimit: (data['amountLimit'] as num).toDouble(),
                   period: Value(data['period'] ?? 'monthly'),
@@ -362,6 +380,7 @@ class RecycleBinRepository {
           await _db.into(_db.goals).insert(
                 GoalsCompanion.insert(
                   id: data['id'],
+                  profileId: Value(data['profileId'] ?? item.profileId),
                   name: data['name'],
                   targetAmount: (data['targetAmount'] as num).toDouble(),
                   currentAmount: Value((data['currentAmount'] as num).toDouble()),
@@ -380,6 +399,7 @@ class RecycleBinRepository {
           await _db.into(_db.debts).insert(
                 DebtsCompanion.insert(
                   id: data['id'],
+                  profileId: Value(data['profileId'] ?? item.profileId),
                   personName: data['personName'],
                   amount: (data['amount'] as num).toDouble(),
                   settledAmount: Value((data['settledAmount'] as num).toDouble()),
@@ -398,6 +418,7 @@ class RecycleBinRepository {
           await _db.into(_db.recurringTransactions).insert(
                 RecurringTransactionsCompanion.insert(
                   id: data['id'],
+                  profileId: Value(data['profileId'] ?? item.profileId),
                   title: data['title'],
                   amount: (data['amount'] as num).toDouble(),
                   categoryId: data['categoryId'],
@@ -418,6 +439,7 @@ class RecycleBinRepository {
           await _db.into(_db.categories).insert(
                 CategoriesCompanion.insert(
                   id: data['id'],
+                  profileId: Value(data['profileId'] ?? item.profileId),
                   name: data['name'],
                   type: data['type'],
                   icon: Value(data['icon'] ?? 'category'),
@@ -486,14 +508,14 @@ class RecycleBinRepository {
 
   /// Empty all items (or by specific entityType)
   Future<int> emptyRecycleBin({String? entityType}) async {
-    final query = _db.select(_db.deletedItems);
+    final query = _db.select(_db.deletedItems)..where((t) => t.profileId.equals(profileId));
     if (entityType != null && entityType.isNotEmpty && entityType != 'all') {
       query.where((t) => t.entityType.equals(entityType));
     }
     final items = await query.get();
     await _cleanupReceiptsForDeletedItems(items);
 
-    final delQuery = _db.delete(_db.deletedItems);
+    final delQuery = _db.delete(_db.deletedItems)..where((t) => t.profileId.equals(profileId));
     if (entityType != null && entityType.isNotEmpty && entityType != 'all') {
       delQuery.where((t) => t.entityType.equals(entityType));
     }
@@ -504,7 +526,8 @@ class RecycleBinRepository {
 final recycleBinRepositoryProvider = Provider<RecycleBinRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
   final receiptStorage = ref.watch(receiptStorageServiceProvider);
-  return RecycleBinRepository(db, receiptStorage);
+  final profileId = ref.watch(activeProfileIdProvider);
+  return RecycleBinRepository(db, receiptStorage, profileId);
 });
 
 final deletedItemsStreamProvider = StreamProvider.family<List<DeletedItem>, String?>((ref, type) {

@@ -21,6 +21,35 @@ import '../../../core/providers/database_provider.dart';
 import '../../../core/services/receipt_storage_service.dart';
 import 'backup_crypto_service.dart';
 
+enum RestoreStrategy {
+  cleanSlate, // Full wipe and replace
+  merge,      // Selective merge/overwrite for selected profiles only, keeping other existing profiles
+}
+
+class ProfileBackupInfo {
+  final String id;
+  final String name;
+  final String? email;
+  final String icon;
+  final int color;
+  final String currency;
+  final bool isDefault;
+  final int accountCount;
+  final int transactionCount;
+
+  ProfileBackupInfo({
+    required this.id,
+    required this.name,
+    this.email,
+    required this.icon,
+    required this.color,
+    required this.currency,
+    this.isDefault = false,
+    this.accountCount = 0,
+    this.transactionCount = 0,
+  });
+}
+
 class BackupPreview {
   final int version;
   final String appName;
@@ -36,6 +65,7 @@ class BackupPreview {
   final int receiptSizeBytes;
   final bool hasImages;
   final bool isContainer;
+  final List<ProfileBackupInfo> profiles;
 
   BackupPreview({
     required this.version,
@@ -52,6 +82,7 @@ class BackupPreview {
     this.receiptSizeBytes = 0,
     this.hasImages = false,
     this.isContainer = false,
+    this.profiles = const [],
   });
 
   String get formattedReceiptSize {
@@ -182,45 +213,50 @@ class BackupRestoreService {
 
   /// List all local backup files in the configured storage directory
   Future<List<BackupFileInfo>> listLocalBackups() async {
-    final dirPath = await getBackupStorageDirectory();
-    final dir = Directory(dirPath);
-    if (!await dir.exists()) {
+    try {
+      final dirPath = await getBackupStorageDirectory();
+      final dir = Directory(dirPath);
+      if (!await dir.exists()) {
+        return [];
+      }
+
+      final entities = await dir.list().toList();
+      final backups = <BackupFileInfo>[];
+
+      for (final entity in entities) {
+        if (entity is File &&
+            (entity.path.endsWith('.lumina') ||
+                entity.path.endsWith('.lumina.enc') ||
+                entity.path.endsWith('.zip') ||
+                entity.path.endsWith('.json') ||
+                entity.path.endsWith('.enc'))) {
+          final stat = await entity.stat();
+          final name = p.basename(entity.path);
+          final isEncrypted = entity.path.endsWith('.enc') || entity.path.endsWith('.lumina.enc');
+          final isAuto = name.toLowerCase().contains('_auto_') || name.toLowerCase().startsWith('lumina_backup_auto');
+          final isContainer = entity.path.endsWith('.lumina') ||
+              entity.path.endsWith('.zip') ||
+              entity.path.endsWith('.lumina.enc');
+
+          backups.add(BackupFileInfo(
+            path: entity.path,
+            fileName: name,
+            sizeBytes: stat.size,
+            modifiedAt: stat.modified,
+            isEncrypted: isEncrypted,
+            isAuto: isAuto,
+            isContainer: isContainer,
+          ));
+        }
+      }
+
+      // Sort newest first
+      backups.sort((a, b) => b.modifiedAt.compareTo(a.modifiedAt));
+      return backups;
+    } catch (e) {
+      debugPrint('Error listing local backups: $e');
       return [];
     }
-
-    final entities = await dir.list().toList();
-    final backups = <BackupFileInfo>[];
-
-    for (final entity in entities) {
-      if (entity is File &&
-          (entity.path.endsWith('.lumina') ||
-              entity.path.endsWith('.lumina.enc') ||
-              entity.path.endsWith('.zip') ||
-              entity.path.endsWith('.json') ||
-              entity.path.endsWith('.enc'))) {
-        final stat = await entity.stat();
-        final name = p.basename(entity.path);
-        final isEncrypted = entity.path.endsWith('.enc') || entity.path.endsWith('.lumina.enc');
-        final isAuto = name.toLowerCase().contains('_auto_') || name.toLowerCase().startsWith('lumina_backup_auto');
-        final isContainer = entity.path.endsWith('.lumina') ||
-            entity.path.endsWith('.zip') ||
-            entity.path.endsWith('.lumina.enc');
-
-        backups.add(BackupFileInfo(
-          path: entity.path,
-          fileName: name,
-          sizeBytes: stat.size,
-          modifiedAt: stat.modified,
-          isEncrypted: isEncrypted,
-          isAuto: isAuto,
-          isContainer: isContainer,
-        ));
-      }
-    }
-
-    // Sort newest first
-    backups.sort((a, b) => b.modifiedAt.compareTo(a.modifiedAt));
-    return backups;
   }
 
 
@@ -298,21 +334,49 @@ class BackupRestoreService {
   }
 
   /// Generate Backup JSON payload
-  Future<Map<String, dynamic>> _buildBackupPayload() async {
+  Future<Map<String, dynamic>> _buildBackupPayload({List<String>? selectedProfileIds}) async {
     final prefs = await SharedPreferences.getInstance();
-    final accounts = await _db.select(_db.accounts).get();
-    final categories = await _db.select(_db.categories).get();
-    final transactions = await _db.select(_db.transactions).get();
-    final budgets = await _db.select(_db.budgets).get();
-    final debts = await _db.select(_db.debts).get();
-    final debtRepayments = await _db.select(_db.debtRepayments).get();
-    final goals = await _db.select(_db.goals).get();
-    final goalTransactions = await _db.select(_db.goalTransactions).get();
-    final splits = await _db.select(_db.transactionSplits).get();
-    final subscriptions = await _db.select(_db.recurringTransactions).get();
+
+    final allProfiles = await _db.select(_db.userProfiles).get();
+    final profileFilter = (selectedProfileIds != null && selectedProfileIds.isNotEmpty)
+        ? selectedProfileIds.toSet()
+        : null;
+
+    final profiles = profileFilter != null
+        ? allProfiles.where((p) => profileFilter.contains(p.id)).toList()
+        : allProfiles;
+
+    var accounts = await _db.select(_db.accounts).get();
+    var categories = await _db.select(_db.categories).get();
+    var transactions = await _db.select(_db.transactions).get();
+    var budgets = await _db.select(_db.budgets).get();
+    var debts = await _db.select(_db.debts).get();
+    var debtRepayments = await _db.select(_db.debtRepayments).get();
+    var goals = await _db.select(_db.goals).get();
+    var goalTransactions = await _db.select(_db.goalTransactions).get();
+    var splits = await _db.select(_db.transactionSplits).get();
+    var subscriptions = await _db.select(_db.recurringTransactions).get();
+    var deletedItems = await _db.select(_db.deletedItems).get();
+
+    if (profileFilter != null) {
+      accounts = accounts.where((a) => profileFilter.contains(a.profileId)).toList();
+      categories = categories.where((c) => profileFilter.contains(c.profileId)).toList();
+      transactions = transactions.where((t) => profileFilter.contains(t.profileId)).toList();
+      budgets = budgets.where((b) => profileFilter.contains(b.profileId)).toList();
+      debts = debts.where((d) => profileFilter.contains(d.profileId)).toList();
+      final debtIds = debts.map((d) => d.id).toSet();
+      debtRepayments = debtRepayments.where((r) => debtIds.contains(r.debtId)).toList();
+      goals = goals.where((g) => profileFilter.contains(g.profileId)).toList();
+      final goalIds = goals.map((g) => g.id).toSet();
+      goalTransactions = goalTransactions.where((gt) => goalIds.contains(gt.goalId)).toList();
+      final txIds = transactions.map((t) => t.id).toSet();
+      splits = splits.where((s) => txIds.contains(s.transactionId)).toList();
+      subscriptions = subscriptions.where((s) => profileFilter.contains(s.profileId)).toList();
+      deletedItems = deletedItems.where((d) => profileFilter.contains(d.profileId)).toList();
+    }
 
     return {
-      'version': 6,
+      'version': 7,
       'appName': 'LuminaExpense',
       'exportDate': DateTime.now().toIso8601String(),
       'settings': {
@@ -327,9 +391,22 @@ class BackupRestoreService {
         'maxBackupFiles': prefs.getInt(_keyMaxFiles),
       },
       'data': {
+        'profiles': profiles
+            .map((p) => {
+                  'id': p.id,
+                  'name': p.name,
+                  'email': p.email,
+                  'icon': p.icon,
+                  'color': p.color,
+                  'currency': p.currency,
+                  'isDefault': p.isDefault,
+                  'createdAt': p.createdAt.toIso8601String(),
+                })
+            .toList(),
         'accounts': accounts
             .map((a) => {
                   'id': a.id,
+                  'profileId': a.profileId,
                   'name': a.name,
                   'type': a.type,
                   'initialBalance': a.initialBalance,
@@ -343,6 +420,7 @@ class BackupRestoreService {
         'categories': categories
             .map((c) => {
                   'id': c.id,
+                  'profileId': c.profileId,
                   'name': c.name,
                   'type': c.type,
                   'icon': c.icon,
@@ -354,6 +432,7 @@ class BackupRestoreService {
         'transactions': transactions
             .map((t) => {
                   'id': t.id,
+                  'profileId': t.profileId,
                   'title': t.title,
                   'amount': t.amount,
                   'type': t.type,
@@ -380,6 +459,7 @@ class BackupRestoreService {
         'budgets': budgets
             .map((b) => {
                   'id': b.id,
+                  'profileId': b.profileId,
                   'categoryId': b.categoryId,
                   'amountLimit': b.amountLimit,
                   'period': b.period,
@@ -389,6 +469,7 @@ class BackupRestoreService {
         'debts': debts
             .map((d) => {
                   'id': d.id,
+                  'profileId': d.profileId,
                   'personName': d.personName,
                   'amount': d.amount,
                   'settledAmount': d.settledAmount,
@@ -414,6 +495,7 @@ class BackupRestoreService {
         'goals': goals
             .map((g) => {
                   'id': g.id,
+                  'profileId': g.profileId,
                   'name': g.name,
                   'targetAmount': g.targetAmount,
                   'currentAmount': g.currentAmount,
@@ -439,6 +521,7 @@ class BackupRestoreService {
         'recurringTransactions': subscriptions
             .map((s) => {
                   'id': s.id,
+                  'profileId': s.profileId,
                   'title': s.title,
                   'amount': s.amount,
                   'categoryId': s.categoryId,
@@ -452,9 +535,10 @@ class BackupRestoreService {
                   'createdAt': s.createdAt.toIso8601String(),
                 })
             .toList(),
-        'deletedItems': (await _db.select(_db.deletedItems).get())
+        'deletedItems': deletedItems
             .map((d) => {
                   'id': d.id,
+                  'profileId': d.profileId,
                   'entityId': d.entityId,
                   'entityType': d.entityType,
                   'title': d.title,
@@ -469,15 +553,20 @@ class BackupRestoreService {
   }
 
   /// Collect all active physical receipt image files referenced in transactions
-  Future<List<File>> _collectActiveReceiptFiles() async {
+  Future<List<File>> _collectActiveReceiptFiles({List<String>? selectedProfileIds}) async {
     final storage = _receiptStorage ?? ReceiptStorageService();
     final files = <File>[];
     final seenNames = <String>{};
 
     try {
       final query = _db.selectOnly(_db.transactions)
-        ..addColumns([_db.transactions.receiptPath])
+        ..addColumns([_db.transactions.receiptPath, _db.transactions.profileId])
         ..where(_db.transactions.receiptPath.isNotNull());
+
+      if (selectedProfileIds != null && selectedProfileIds.isNotEmpty) {
+        query.where(_db.transactions.profileId.isIn(selectedProfileIds));
+      }
+
       final rows = await query.map((row) => row.read(_db.transactions.receiptPath)).get();
 
       for (final path in rows) {
@@ -505,13 +594,16 @@ class BackupRestoreService {
     String? password,
     bool isAuto = false,
     bool? includeReceipts,
+    List<String>? selectedProfileIds,
   }) async {
-    final payload = await _buildBackupPayload();
+    final payload = await _buildBackupPayload(selectedProfileIds: selectedProfileIds);
     final jsonString = const JsonEncoder.withIndent('  ').convert(payload);
     final jsonBytes = utf8.encode(jsonString);
 
     final shouldIncludeReceipts = includeReceipts ?? await getIncludeReceipts();
-    final receiptFiles = shouldIncludeReceipts ? await _collectActiveReceiptFiles() : <File>[];
+    final receiptFiles = shouldIncludeReceipts
+        ? await _collectActiveReceiptFiles(selectedProfileIds: selectedProfileIds)
+        : <File>[];
 
     final archive = Archive();
 
@@ -578,7 +670,11 @@ class BackupRestoreService {
   }
 
   /// Export Backup to temporary location and trigger Native Share Sheet
-  Future<String> exportBackupJson({String? password, bool? includeReceipts}) async {
+  Future<String> exportBackupJson({
+    String? password,
+    bool? includeReceipts,
+    List<String>? selectedProfileIds,
+  }) async {
     final tempDir = await getTemporaryDirectory();
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final isEnc = password != null && password.trim().isNotEmpty;
@@ -588,6 +684,7 @@ class BackupRestoreService {
       password: password,
       isAuto: false,
       includeReceipts: includeReceipts,
+      selectedProfileIds: selectedProfileIds,
     );
 
     final fileName = p.basename(filePath);
@@ -1129,14 +1226,52 @@ class BackupRestoreService {
     }
 
     final data = json['data'] as Map<String, dynamic>;
+    final profilesData = (data['profiles'] as List? ?? []);
+    final accList = (data['accounts'] as List? ?? []);
+    final txList = (data['transactions'] as List? ?? []);
+
+    final List<ProfileBackupInfo> profiles;
+    if (profilesData.isNotEmpty) {
+      profiles = profilesData.map((p) {
+        final pMap = p as Map<String, dynamic>;
+        final pId = pMap['id'] as String;
+        final accCount = accList.where((a) => ((a as Map)['profileId'] ?? 'default_profile') == pId).length;
+        final txCount = txList.where((t) => ((t as Map)['profileId'] ?? 'default_profile') == pId).length;
+        return ProfileBackupInfo(
+          id: pId,
+          name: pMap['name'] as String? ?? 'Profile',
+          email: pMap['email'] as String?,
+          icon: pMap['icon'] as String? ?? 'person',
+          color: (pMap['color'] as num?)?.toInt() ?? 0xFF2196F3,
+          currency: pMap['currency'] as String? ?? 'USD',
+          isDefault: pMap['isDefault'] as bool? ?? false,
+          accountCount: accCount,
+          transactionCount: txCount,
+        );
+      }).toList();
+    } else {
+      profiles = [
+        ProfileBackupInfo(
+          id: 'default_profile',
+          name: json['settings']?['userProfileName'] as String? ?? 'Personal',
+          email: json['settings']?['userProfileEmail'] as String?,
+          icon: 'person',
+          color: 0xFF2196F3,
+          currency: (json['settings']?['selectedCurrency'] as String?) ?? 'USD',
+          isDefault: true,
+          accountCount: accList.length,
+          transactionCount: txList.length,
+        ),
+      ];
+    }
 
     return BackupPreview(
       version: json['version'] as int? ?? 1,
       appName: json['appName'] as String? ?? 'Unknown',
       exportDate: DateTime.tryParse(json['exportDate'] as String? ?? '') ?? DateTime.now(),
-      accountCount: (data['accounts'] as List?)?.length ?? 0,
+      accountCount: accList.length,
       categoryCount: (data['categories'] as List?)?.length ?? 0,
-      transactionCount: (data['transactions'] as List?)?.length ?? 0,
+      transactionCount: txList.length,
       budgetCount: (data['budgets'] as List?)?.length ?? 0,
       debtCount: (data['debts'] as List?)?.length ?? 0,
       goalCount: (data['goals'] as List?)?.length ?? 0,
@@ -1145,14 +1280,14 @@ class BackupRestoreService {
       receiptSizeBytes: receiptSizeBytes,
       hasImages: hasImages,
       isContainer: isContainer,
+      profiles: profiles,
     );
   }
 
   /// Pick a backup file from anywhere via file picker
   Future<({String filePath, BackupPreview preview, bool isEncrypted})?> pickAndInspectBackup({String? password}) async {
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['lumina', 'zip', 'enc', 'json'],
+      type: FileType.any,
     );
 
     if (result == null || result.files.isEmpty || result.files.single.path == null) {
@@ -1170,8 +1305,7 @@ class BackupRestoreService {
   /// Launch file picker to select a backup file path (.lumina, .zip, .enc, or .json)
   Future<String?> pickBackupFilePath() async {
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['lumina', 'zip', 'enc', 'json'],
+      type: FileType.any,
     );
 
     if (result == null || result.files.isEmpty || result.files.single.path == null) {
@@ -1201,7 +1335,12 @@ class BackupRestoreService {
   }
 
   /// Restore database from backup file (supports .lumina containers, encrypted .enc, and legacy .json)
-  Future<void> restoreFromFile(String filePath, {String? password}) async {
+  Future<void> restoreFromFile(
+    String filePath, {
+    String? password,
+    List<String>? selectedProfileIds,
+    RestoreStrategy strategy = RestoreStrategy.cleanSlate,
+  }) async {
     final file = File(filePath);
     final rawBytes = await file.readAsBytes();
 
@@ -1234,7 +1373,11 @@ class BackupRestoreService {
         dbJson = jsonDecode(decrypted.jsonString!) as Map<String, dynamic>;
       }
 
-      await _restoreDatabaseFromJson(dbJson);
+      await _restoreDatabaseFromJson(
+        dbJson,
+        selectedProfileIds: selectedProfileIds,
+        strategy: strategy,
+      );
       return;
     }
 
@@ -1253,39 +1396,151 @@ class BackupRestoreService {
       final jsonString = utf8.decode(dbFile.content as List<int>);
       dbJson = jsonDecode(jsonString) as Map<String, dynamic>;
 
-      await _restoreDatabaseFromJson(dbJson);
+      await _restoreDatabaseFromJson(
+        dbJson,
+        selectedProfileIds: selectedProfileIds,
+        strategy: strategy,
+      );
       return;
     }
 
     // 3. Fallback: Legacy unencrypted JSON file
     final content = utf8.decode(rawBytes);
     dbJson = jsonDecode(content) as Map<String, dynamic>;
-    await _restoreDatabaseFromJson(dbJson);
+    await _restoreDatabaseFromJson(
+      dbJson,
+      selectedProfileIds: selectedProfileIds,
+      strategy: strategy,
+    );
   }
 
   /// Internal helper to restore database tables from decoded JSON map
-  Future<void> _restoreDatabaseFromJson(Map<String, dynamic> json) async {
+  Future<void> _restoreDatabaseFromJson(
+    Map<String, dynamic> json, {
+    List<String>? selectedProfileIds,
+    RestoreStrategy strategy = RestoreStrategy.cleanSlate,
+  }) async {
     final data = json['data'] as Map<String, dynamic>;
+    final profilesData = (data['profiles'] as List? ?? []);
+    final Set<String>? targetProfileIds = (selectedProfileIds != null && selectedProfileIds.isNotEmpty)
+        ? selectedProfileIds.toSet()
+        : null;
+
+    bool shouldRestore(String? pId) {
+      final effectiveId = (pId == null || pId.isEmpty) ? 'default_profile' : pId;
+      if (targetProfileIds != null && !targetProfileIds.contains(effectiveId)) {
+        return false;
+      }
+      return true;
+    }
 
     await _db.transaction(() async {
-      // 1. Clear existing data
-      await _db.delete(_db.recurringTransactions).go();
-      await _db.delete(_db.transactionSplits).go();
-      await _db.delete(_db.transactions).go();
-      await _db.delete(_db.debtRepayments).go();
-      await _db.delete(_db.debts).go();
-      await _db.delete(_db.budgets).go();
-      await _db.delete(_db.goalTransactions).go();
-      await _db.delete(_db.goals).go();
-      await _db.delete(_db.categories).go();
-      await _db.delete(_db.accounts).go();
+      if (strategy == RestoreStrategy.cleanSlate) {
+        // 1. Clear ALL existing data across all tables
+        await _db.delete(_db.deletedItems).go();
+        await _db.delete(_db.recurringTransactions).go();
+        await _db.delete(_db.transactionSplits).go();
+        await _db.delete(_db.transactions).go();
+        await _db.delete(_db.debtRepayments).go();
+        await _db.delete(_db.debts).go();
+        await _db.delete(_db.budgets).go();
+        await _db.delete(_db.goalTransactions).go();
+        await _db.delete(_db.goals).go();
+        await _db.delete(_db.categories).go();
+        await _db.delete(_db.accounts).go();
+        await _db.delete(_db.userProfiles).go();
+      } else {
+        // MERGE: Clear ONLY data associated with profiles that are being restored
+        final pIdsToReplace = targetProfileIds ??
+            (profilesData.isNotEmpty
+                ? profilesData.map((p) => (p as Map)['id'] as String).toSet()
+                : {'default_profile'});
 
-      // 2. Insert Accounts
+        for (final pId in pIdsToReplace) {
+          await (_db.delete(_db.deletedItems)..where((t) => t.profileId.equals(pId))).go();
+          await (_db.delete(_db.recurringTransactions)..where((t) => t.profileId.equals(pId))).go();
+
+          final txs = await (_db.select(_db.transactions)..where((t) => t.profileId.equals(pId))).get();
+          final txIds = txs.map((t) => t.id).toList();
+          if (txIds.isNotEmpty) {
+            await (_db.delete(_db.transactionSplits)..where((t) => t.transactionId.isIn(txIds))).go();
+          }
+          await (_db.delete(_db.transactions)..where((t) => t.profileId.equals(pId))).go();
+
+          final debts = await (_db.select(_db.debts)..where((t) => t.profileId.equals(pId))).get();
+          final debtIds = debts.map((d) => d.id).toList();
+          if (debtIds.isNotEmpty) {
+            await (_db.delete(_db.debtRepayments)..where((t) => t.debtId.isIn(debtIds))).go();
+          }
+          await (_db.delete(_db.debts)..where((t) => t.profileId.equals(pId))).go();
+
+          final goals = await (_db.select(_db.goals)..where((t) => t.profileId.equals(pId))).get();
+          final goalIds = goals.map((g) => g.id).toList();
+          if (goalIds.isNotEmpty) {
+            await (_db.delete(_db.goalTransactions)..where((t) => t.goalId.isIn(goalIds))).go();
+          }
+          await (_db.delete(_db.goals)..where((t) => t.profileId.equals(pId))).go();
+
+          await (_db.delete(_db.budgets)..where((t) => t.profileId.equals(pId))).go();
+          await (_db.delete(_db.categories)..where((t) => t.profileId.equals(pId))).go();
+          await (_db.delete(_db.accounts)..where((t) => t.profileId.equals(pId))).go();
+          await (_db.delete(_db.userProfiles)..where((t) => t.id.equals(pId))).go();
+        }
+      }
+
+      // 2. Insert Profiles
+      if (profilesData.isNotEmpty) {
+        for (final p in profilesData) {
+          final pMap = p as Map<String, dynamic>;
+          final pId = pMap['id'] as String;
+          if (!shouldRestore(pId)) continue;
+
+          await _db.into(_db.userProfiles).insert(
+                UserProfilesCompanion.insert(
+                  id: pId,
+                  name: pMap['name'] as String? ?? 'Profile',
+                  email: Value(pMap['email'] as String?),
+                  icon: Value(pMap['icon'] as String? ?? 'person'),
+                  color: Value((pMap['color'] as num?)?.toInt() ?? 0xFF2196F3),
+                  currency: Value(pMap['currency'] as String? ?? 'USD'),
+                  isDefault: Value(pMap['isDefault'] as bool? ?? false),
+                  createdAt: Value(DateTime.tryParse(pMap['createdAt'] ?? '') ?? DateTime.now()),
+                ),
+                mode: InsertMode.insertOrReplace,
+              );
+        }
+      } else {
+        // Legacy backup: insert default profile
+        if (shouldRestore('default_profile')) {
+          final legacyName = json['settings']?['userProfileName'] as String? ?? 'Personal';
+          final legacyEmail = json['settings']?['userProfileEmail'] as String?;
+          final legacyCurr = (json['settings']?['selectedCurrency'] as String?) ?? 'USD';
+          await _db.into(_db.userProfiles).insert(
+                UserProfilesCompanion.insert(
+                  id: 'default_profile',
+                  name: legacyName,
+                  email: Value(legacyEmail),
+                  icon: const Value('person'),
+                  color: const Value(0xFF2196F3),
+                  currency: Value(legacyCurr),
+                  isDefault: const Value(true),
+                  createdAt: Value(DateTime.now()),
+                ),
+                mode: InsertMode.insertOrReplace,
+              );
+        }
+      }
+
+      // 3. Insert Accounts
       final accountsList = (data['accounts'] as List? ?? []);
       for (final a in accountsList) {
+        final aProfileId = a['profileId'] as String? ?? 'default_profile';
+        if (!shouldRestore(aProfileId)) continue;
+
         await _db.into(_db.accounts).insert(
               AccountsCompanion.insert(
                 id: a['id'],
+                profileId: Value(aProfileId),
                 name: a['name'],
                 type: a['type'],
                 initialBalance: Value((a['initialBalance'] as num?)?.toDouble() ?? 0.0),
@@ -1295,15 +1550,20 @@ class BackupRestoreService {
                 isArchived: Value(a['isArchived'] ?? false),
                 createdAt: Value(DateTime.tryParse(a['createdAt'] ?? '') ?? DateTime.now()),
               ),
+              mode: InsertMode.insertOrReplace,
             );
       }
 
-      // 3. Insert Categories
+      // 4. Insert Categories
       final categoriesList = (data['categories'] as List? ?? []);
       for (final c in categoriesList) {
+        final cProfileId = c['profileId'] as String? ?? 'default_profile';
+        if (!shouldRestore(cProfileId)) continue;
+
         await _db.into(_db.categories).insert(
               CategoriesCompanion.insert(
                 id: c['id'],
+                profileId: Value(cProfileId),
                 name: c['name'],
                 type: c['type'],
                 icon: Value(c['icon'] ?? 'category'),
@@ -1311,15 +1571,21 @@ class BackupRestoreService {
                 parentCategoryId: Value(c['parentCategoryId']),
                 isDefault: Value(c['isDefault'] ?? false),
               ),
+              mode: InsertMode.insertOrReplace,
             );
       }
 
-      // 4. Insert Transactions
+      // 5. Insert Transactions
       final transactionsList = (data['transactions'] as List? ?? []);
+      final insertedTxIds = <String>{};
       for (final t in transactionsList) {
+        final tProfileId = t['profileId'] as String? ?? 'default_profile';
+        if (!shouldRestore(tProfileId)) continue;
+
         await _db.into(_db.transactions).insert(
               TransactionsCompanion.insert(
                 id: t['id'],
+                profileId: Value(tProfileId),
                 title: t['title'],
                 amount: (t['amount'] as num).toDouble(),
                 type: t['type'],
@@ -1333,43 +1599,59 @@ class BackupRestoreService {
                 isSplit: Value(t['isSplit'] ?? false),
                 createdAt: Value(DateTime.tryParse(t['createdAt'] ?? '') ?? DateTime.now()),
               ),
+              mode: InsertMode.insertOrReplace,
             );
+        insertedTxIds.add(t['id'] as String);
       }
 
-      // 5. Insert Transaction Splits
+      // 6. Insert Transaction Splits (only for inserted transactions)
       final splitsList = (data['transactionSplits'] as List? ?? []);
       for (final s in splitsList) {
+        final txId = s['transactionId'] as String?;
+        if (txId == null || !insertedTxIds.contains(txId)) continue;
+
         await _db.into(_db.transactionSplits).insert(
               TransactionSplitsCompanion.insert(
                 id: s['id'],
-                transactionId: s['transactionId'],
+                transactionId: txId,
                 categoryId: s['categoryId'],
                 amount: (s['amount'] as num).toDouble(),
                 note: Value(s['note']),
               ),
+              mode: InsertMode.insertOrReplace,
             );
       }
 
-      // 6. Insert Budgets
+      // 7. Insert Budgets
       final budgetsList = (data['budgets'] as List? ?? []);
       for (final b in budgetsList) {
+        final bProfileId = b['profileId'] as String? ?? 'default_profile';
+        if (!shouldRestore(bProfileId)) continue;
+
         await _db.into(_db.budgets).insert(
               BudgetsCompanion.insert(
                 id: b['id'],
+                profileId: Value(bProfileId),
                 categoryId: b['categoryId'],
                 amountLimit: (b['amountLimit'] as num).toDouble(),
                 period: Value(b['period'] ?? 'monthly'),
                 startDate: Value(DateTime.tryParse(b['startDate'] ?? '') ?? DateTime.now()),
               ),
+              mode: InsertMode.insertOrReplace,
             );
       }
 
-      // 7. Insert Debts
+      // 8. Insert Debts
       final debtsList = (data['debts'] as List? ?? []);
+      final insertedDebtIds = <String>{};
       for (final d in debtsList) {
+        final dProfileId = d['profileId'] as String? ?? 'default_profile';
+        if (!shouldRestore(dProfileId)) continue;
+
         await _db.into(_db.debts).insert(
               DebtsCompanion.insert(
                 id: d['id'],
+                profileId: Value(dProfileId),
                 personName: d['personName'],
                 amount: (d['amount'] as num).toDouble(),
                 settledAmount: Value((d['settledAmount'] as num?)?.toDouble() ?? 0.0),
@@ -1381,30 +1663,41 @@ class BackupRestoreService {
                 notes: Value(d['notes']),
                 createdAt: Value(DateTime.tryParse(d['createdAt'] ?? '') ?? DateTime.now()),
               ),
+              mode: InsertMode.insertOrReplace,
             );
+        insertedDebtIds.add(d['id'] as String);
       }
 
-      // 7b. Insert Debt Repayments
+      // 8b. Insert Debt Repayments (only for inserted debts)
       final debtRepaymentsList = (data['debtRepayments'] as List? ?? []);
       for (final r in debtRepaymentsList) {
+        final debtId = r['debtId'] as String?;
+        if (debtId == null || !insertedDebtIds.contains(debtId)) continue;
+
         await _db.into(_db.debtRepayments).insert(
               DebtRepaymentsCompanion.insert(
                 id: r['id'],
-                debtId: r['debtId'],
+                debtId: debtId,
                 amount: (r['amount'] as num).toDouble(),
                 date: Value(DateTime.tryParse(r['date'] ?? '') ?? DateTime.now()),
                 notes: Value(r['notes']),
                 createdAt: Value(DateTime.tryParse(r['createdAt'] ?? '') ?? DateTime.now()),
               ),
+              mode: InsertMode.insertOrReplace,
             );
       }
 
-      // 8. Insert Goals
+      // 9. Insert Goals
       final goalsList = (data['goals'] as List? ?? []);
+      final insertedGoalIds = <String>{};
       for (final g in goalsList) {
+        final gProfileId = g['profileId'] as String? ?? 'default_profile';
+        if (!shouldRestore(gProfileId)) continue;
+
         await _db.into(_db.goals).insert(
               GoalsCompanion.insert(
                 id: g['id'],
+                profileId: Value(gProfileId),
                 name: g['name'],
                 targetAmount: (g['targetAmount'] as num).toDouble(),
                 currentAmount: Value((g['currentAmount'] as num?)?.toDouble() ?? 0.0),
@@ -1415,31 +1708,41 @@ class BackupRestoreService {
                 isCompleted: Value(g['isCompleted'] ?? false),
                 createdAt: Value(DateTime.tryParse(g['createdAt'] ?? '') ?? DateTime.now()),
               ),
+              mode: InsertMode.insertOrReplace,
             );
+        insertedGoalIds.add(g['id'] as String);
       }
 
-      // 8b. Insert Goal Transactions
+      // 9b. Insert Goal Transactions (only for inserted goals)
       final goalTransactionsList = (data['goalTransactions'] as List? ?? []);
       for (final t in goalTransactionsList) {
+        final goalId = t['goalId'] as String?;
+        if (goalId == null || !insertedGoalIds.contains(goalId)) continue;
+
         await _db.into(_db.goalTransactions).insert(
               GoalTransactionsCompanion.insert(
                 id: t['id'],
-                goalId: t['goalId'],
+                goalId: goalId,
                 type: t['type'] ?? 'deposit',
                 amount: (t['amount'] as num).toDouble(),
                 date: Value(DateTime.tryParse(t['date'] ?? '') ?? DateTime.now()),
                 notes: Value(t['notes']),
                 createdAt: Value(DateTime.tryParse(t['createdAt'] ?? '') ?? DateTime.now()),
               ),
+              mode: InsertMode.insertOrReplace,
             );
       }
 
-      // 9. Insert Recurring Transactions (Subscriptions)
+      // 10. Insert Recurring Transactions (Subscriptions)
       final recurringList = (data['recurringTransactions'] as List? ?? []);
       for (final r in recurringList) {
+        final rProfileId = r['profileId'] as String? ?? 'default_profile';
+        if (!shouldRestore(rProfileId)) continue;
+
         await _db.into(_db.recurringTransactions).insert(
               RecurringTransactionsCompanion.insert(
                 id: r['id'],
+                profileId: Value(rProfileId),
                 title: r['title'],
                 amount: (r['amount'] as num).toDouble(),
                 categoryId: r['categoryId'],
@@ -1452,16 +1755,20 @@ class BackupRestoreService {
                 notes: Value(r['notes']),
                 createdAt: Value(DateTime.tryParse(r['createdAt'] ?? '') ?? DateTime.now()),
               ),
+              mode: InsertMode.insertOrReplace,
             );
       }
 
-      // 10. Insert Deleted Items (Recycle Bin)
-      await _db.delete(_db.deletedItems).go();
+      // 11. Insert Deleted Items (Recycle Bin)
       final deletedList = (data['deletedItems'] as List? ?? []);
       for (final d in deletedList) {
+        final dProfileId = d['profileId'] as String? ?? 'default_profile';
+        if (!shouldRestore(dProfileId)) continue;
+
         await _db.into(_db.deletedItems).insert(
               DeletedItemsCompanion.insert(
                 id: d['id'],
+                profileId: Value(dProfileId),
                 entityId: d['entityId'],
                 entityType: d['entityType'],
                 title: d['title'],
@@ -1470,11 +1777,19 @@ class BackupRestoreService {
                 payloadJson: d['payloadJson'],
                 deletedAt: Value(DateTime.tryParse(d['deletedAt'] ?? '') ?? DateTime.now()),
               ),
+              mode: InsertMode.insertOrReplace,
             );
+      }
+
+      // Ensure at least one profile has isDefault: true
+      final allProfilesAfter = await _db.select(_db.userProfiles).get();
+      if (allProfilesAfter.isNotEmpty && !allProfilesAfter.any((p) => p.isDefault)) {
+        await (_db.update(_db.userProfiles)..where((p) => p.id.equals(allProfilesAfter.first.id)))
+            .write(const UserProfilesCompanion(isDefault: Value(true)));
       }
     });
 
-    // 11. Restore user settings and preferences if present (v6+)
+    // 12. Restore user settings and preferences if present (v6+)
     if (json['settings'] is Map<String, dynamic>) {
       final s = json['settings'] as Map<String, dynamic>;
       final prefs = await SharedPreferences.getInstance();
@@ -1505,6 +1820,18 @@ class BackupRestoreService {
       if (s['autoBackupFrequency'] is String) await prefs.setString(_keyAutoFrequency, s['autoBackupFrequency']);
       if (s['maxBackupFiles'] is int) await prefs.setInt(_keyMaxFiles, s['maxBackupFiles']);
     }
+
+    // Ensure active profile ID preference exists and points to a valid profile
+    final remainingProfiles = await _db.select(_db.userProfiles).get();
+    if (remainingProfiles.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      final currentActive = prefs.getString('active_profile_id') ?? prefs.getString('active_user_profile_id');
+      if (currentActive == null || !remainingProfiles.any((p) => p.id == currentActive)) {
+        final defProfile = remainingProfiles.firstWhere((p) => p.isDefault, orElse: () => remainingProfiles.first);
+        await prefs.setString('active_profile_id', defProfile.id);
+        await prefs.setString('active_user_profile_id', defProfile.id);
+      }
+    }
   }
 
   /// Populate comprehensive, realistic multi-month Demo / Sample data
@@ -1526,6 +1853,22 @@ class BackupRestoreService {
       await _db.delete(_db.budgets).go();
       await _db.delete(_db.categories).go();
       await _db.delete(_db.accounts).go();
+      await _db.delete(_db.userProfiles).go();
+
+      // 1b. Seed Default Profile
+      await _db.into(_db.userProfiles).insert(
+            UserProfilesCompanion.insert(
+              id: 'default_profile',
+              name: 'Personal',
+              email: const Value('alex.morgan@lumina.dev'),
+              icon: const Value('person'),
+              color: const Value(0xFF2196F3),
+              currency: const Value('USD'),
+              isDefault: const Value(true),
+              createdAt: Value(now.subtract(const Duration(days: 120))),
+            ),
+            mode: InsertMode.insertOrReplace,
+          );
 
       // 2. Insert Standard Categories
       for (final cat in DefaultData.categories) {
