@@ -13,6 +13,7 @@ class SmartInsightsCard extends ConsumerWidget {
   final List<DayOfWeekSpending> dayOfWeeks;
   final List<TopMerchantItem> topMerchants;
   final TimeframePeriod currentPeriod;
+  final bool inModalSheet;
 
   const SmartInsightsCard({
     super.key,
@@ -22,6 +23,7 @@ class SmartInsightsCard extends ConsumerWidget {
     this.dayOfWeeks = const [],
     this.topMerchants = const [],
     required this.currentPeriod,
+    this.inModalSheet = false,
   });
 
   /// Factory helper that automatically wires live Drift streams from [transactionRepositoryProvider].
@@ -31,6 +33,7 @@ class SmartInsightsCard extends ConsumerWidget {
     required DateTime prevStartDate,
     required DateTime prevEndDate,
     required TimeframePeriod currentPeriod,
+    bool inModalSheet = false,
   }) {
     return Consumer(
       builder: (context, ref, _) {
@@ -57,6 +60,7 @@ class SmartInsightsCard extends ConsumerWidget {
                               dayOfWeeks: dowSnap.data ?? const [],
                               topMerchants: merchSnap.data ?? const [],
                               currentPeriod: currentPeriod,
+                              inModalSheet: inModalSheet,
                             );
                           },
                         );
@@ -184,20 +188,44 @@ class SmartInsightsCard extends ConsumerWidget {
     final insights = _generateInsights();
 
     if (insights.isEmpty) {
+      if (inModalSheet) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.income.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check_circle_outline_rounded, color: AppColors.income, size: 40),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'All Clear & Steady',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'No unusual spending spikes, anomalies, or budget overruns detected for this period.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: isDark ? Colors.white60 : Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
       return const SizedBox.shrink();
     }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!inModalSheet) ...[
           Row(
             children: [
               Expanded(
@@ -237,7 +265,36 @@ class SmartInsightsCard extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Column(
+        ] else ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${insights.length} insight${insights.length > 1 ? "s" : ""} detected',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white60 : Colors.black54,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'Live Anomaly Detection',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF8B5CF6)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        Column(
             children: insights.map((insight) {
               Color badgeColor;
               IconData badgeIcon;
@@ -306,7 +363,21 @@ class SmartInsightsCard extends ConsumerWidget {
             }).toList(),
           ),
         ],
+      );
+
+    if (inModalSheet) {
+      return content;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
       ),
+      child: content,
     );
   }
 }

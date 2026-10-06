@@ -882,15 +882,24 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
                   // ─── Local Backups in Storage ───
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Saved Backups (${_localBackups.length})',
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                      Expanded(
+                        child: Text(
+                          'Saved Backups (${_localBackups.length})',
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       TextButton.icon(
-                        icon: const Icon(Icons.file_open_outlined, size: 16),
-                        label: const Text('Browse Other File...', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: const Icon(Icons.file_open_outlined, size: 15),
+                        label: const Text('Browse File...', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                         onPressed: _handleRestoreFromFilePicker,
                       ),
                     ],
@@ -1090,13 +1099,24 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
                   // ─── Automatic Backups & Retention ───
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Automatic Backups & Retention', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                      const Expanded(
+                        child: Text(
+                          'Automatic Backups & Retention',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       TextButton.icon(
-                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                        icon: const Icon(Icons.play_circle_outline_rounded, size: 16, color: Color(0xFF6366F1)),
-                        label: const Text('Run Auto-Backup Now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF6366F1))),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: const Icon(Icons.play_circle_outline_rounded, size: 15, color: Color(0xFF6366F1)),
+                        label: const Text('Run Now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF6366F1))),
                         onPressed: _handleRunAutoBackupNow,
                       ),
                     ],

@@ -10,6 +10,7 @@ import '../../../../core/widgets/rolling_ticker.dart';
 import '../../../../core/utils/currency_formatter.dart';
 import '../../../accounts/data/account_repository.dart';
 import '../../../transactions/data/transaction_repository.dart';
+import 'net_worth_breakdown_sheet.dart';
 
 class TotalBalanceCard extends ConsumerWidget {
   const TotalBalanceCard({super.key});
@@ -42,6 +43,7 @@ class TotalBalanceCard extends ConsumerWidget {
 
     return Bouncy(
       pressedScale: 0.98,
+      onTap: () => NetWorthBreakdownSheet.show(context),
       onLongPress: () => ref.read(privacyMaskProvider.notifier).toggle(),
       child: Container(
         width: double.infinity,
@@ -68,15 +70,40 @@ class TotalBalanceCard extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Expanded(
-                  child: Text(
-                    'Total Net Worth',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                Expanded(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Flexible(
+                        child: Text(
+                          'Total Net Worth',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Wallets',
+                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+                            ),
+                            Icon(Icons.chevron_right_rounded, color: Colors.white, size: 12),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 8),

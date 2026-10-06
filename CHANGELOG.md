@@ -10,6 +10,35 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Fixed` - for any bug fixes.
 - `Other` - for technical and release chores.
 
+## [v1.11.0] - 2026-10-07
+### Added
+- **Total Net Worth & Multi-Wallet Financial Breakdown Sheet**:
+  - Interactive tap on the Dashboard Total Net Worth card opens a comprehensive modal bottom sheet (`NetWorthBreakdownSheet`).
+  - Added subtle `"Wallets ›"` indicator badge on the Net Worth card for clear affordance.
+  - Implemented `watchAccountsFinancialStats()` reactive stream engine in `AccountRepository` computing real-time Drift SQLite balances, current month income, expense, and net cash flow per wallet/account.
+  - Proportional multi-segment Wealth Allocation Bar visually displaying each wallet's share of total net worth with individual account color accents.
+  - Detailed account cards with 3-column micro-metrics strip (`This Month In`, `This Month Spent`, `Net Flow`) and direct navigation to account management.
+- **Smart Insights Radar in AppBar & Modal Bottom Sheet**:
+  - Re-architected Smart Insights Radar from an inline card into a dedicated top-right AppBar action button with purple accent (`auto_awesome`) beside the period transactions button.
+  - Opens `_showSmartInsightsSheet` with live anomaly detection, spending spikes, and savings habit analysis for the filtered timeframe.
+  - Added twin micro-action pill buttons (`Transactions` & `Insights Radar`) in the Financial Summary card for rapid inline access.
+  - Added an "All Clear & Steady" empty state when no spending spikes or anomalies are detected.
+  - Reduced screen clutter and body vertical bloat by over 250px, bringing 6-month cash flow charts and category trends directly above the fold.
+- **Ultra-Compact Timeframe & Date Navigation Bar**:
+  - Consolidated the previously separate Timeframe Selector and Date Navigation Bar into a single compact, double-tiered card (~63px height, saving ~50px of vertical space).
+  - Segmented pills for Week, Month, Quarter, and Year with hairline divider and compact chevrons.
+
+### Improved
+- **Onboarding Name & Email Personalization**:
+  - Updated placeholder hints on onboarding personalization slide: Name hint changed to `e.g. PrabinCode` and Email hint to `e.g. prabin@pcshrestha.com.np`.
+
+### Fixed
+- **Backup & Restore Horizontal Overflow Safeguards**:
+  - Fixed horizontal layout overflow (`OVERFLOWED BY 0.601 PIXELS`) on the "Automatic Backups & Retention" header row by wrapping section title in `Expanded` and using a compact `Run Now` action button.
+  - Applied `Expanded` text wrapping and compact button styling to "Saved Backups" header row to guarantee responsive safety on all screen widths.
+
+---
+
 ## [v1.10.0] - 2026-10-04
 ### Added
 - **Regional & Formatting Preferences Suite**:

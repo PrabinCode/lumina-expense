@@ -767,7 +767,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   controller: _nameController,
                   decoration: InputDecoration(
                     labelText: 'Your Name (Optional)',
-                    hintText: 'e.g. Alex Smith',
+                    hintText: 'e.g. PrabinCode',
                     prefixIcon:
                         const Icon(Icons.person_outline_rounded, size: 20),
                     border: OutlineInputBorder(
@@ -786,7 +786,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
                     labelText: 'Email Address (Optional)',
-                    hintText: 'e.g. alex@example.com',
+                    hintText: 'e.g. prabin@pcshrestha.com.np',
                     prefixIcon: const Icon(Icons.mail_outline_rounded, size: 20),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),

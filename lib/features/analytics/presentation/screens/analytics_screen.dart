@@ -514,6 +514,107 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
     );
   }
 
+  void _showSmartInsightsSheet(
+    BuildContext context, {
+    required DateTime startDate,
+    required DateTime endDate,
+    required DateTime prevStartDate,
+    required DateTime prevEndDate,
+    required String rangeLabel,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.auto_awesome_rounded,
+                          color: Color(0xFF8B5CF6),
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Smart Insights Radar',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              rangeLabel,
+                              style: const TextStyle(fontSize: 11, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  const Divider(),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      child: SmartInsightsCard.live(
+                        startDate: startDate,
+                        endDate: endDate,
+                        prevStartDate: prevStartDate,
+                        prevEndDate: prevEndDate,
+                        currentPeriod: _currentPeriod,
+                        inModalSheet: true,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildFilterChip(String key, String label, String activeKey, ValueChanged<String> onSelected, bool isDark) {
     final isSelected = activeKey == key;
     return GestureDetector(
@@ -624,6 +725,18 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
         title: const Text('Spending Analytics'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.auto_awesome_rounded, color: Color(0xFF8B5CF6)),
+            tooltip: 'Smart Insights Radar',
+            onPressed: () => _showSmartInsightsSheet(
+              context,
+              startDate: startDate,
+              endDate: endDate,
+              prevStartDate: prevStartDate,
+              prevEndDate: prevEndDate,
+              rangeLabel: rangeLabel,
+            ),
+          ),
+          IconButton(
             icon: const Icon(Icons.receipt_long_rounded),
             tooltip: 'Browse Transactions in Period',
             onPressed: () => _showPeriodTransactionsSheet(context, startDate, endDate, rangeLabel),
@@ -635,74 +748,87 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Timeframe Selector
+            // Unified Compact Timeframe & Date Range Bar
             Container(
-              padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
                 color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
               ),
-              child: Row(
-                children: TimeframePeriod.values.map((p) {
-                  final isSelected = _currentPeriod == p;
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _currentPeriod = p),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isSelected ? AppColors.primary : Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Timeframe Tab Strip (Segmented pills)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 3),
+                    child: Row(
+                      children: TimeframePeriod.values.map((p) {
+                        final isSelected = _currentPeriod == p;
+                        return Expanded(
+                          child: GestureDetector(
+                            onTap: () => setState(() => _currentPeriod = p),
+                            behavior: HitTestBehavior.opaque,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isSelected ? AppColors.primary : Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  p.label,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                    color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  Divider(
+                    height: 1,
+                    thickness: 0.5,
+                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                  ),
+                  // Date Navigation Bar (Compact Height)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 30),
+                          icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                          onPressed: _previousPeriod,
+                          tooltip: 'Previous period',
                         ),
-                        child: Center(
-                          child: Text(
-                            p.label,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                              color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                        Expanded(
+                          child: Center(
+                            child: Text(
+                              rangeLabel,
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ),
-                      ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 30),
+                          icon: const Icon(Icons.chevron_right_rounded, size: 20),
+                          onPressed: _nextPeriod,
+                          tooltip: 'Next period',
+                        ),
+                      ],
                     ),
-                  );
-                }).toList(),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Date Range Navigation Bar
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left_rounded, size: 22),
-                    onPressed: _previousPeriod,
-                    tooltip: 'Previous',
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        rangeLabel,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right_rounded, size: 22),
-                    onPressed: _nextPeriod,
-                    tooltip: 'Next',
                   ),
                 ],
               ),
@@ -867,32 +993,71 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
                             ),
                           ],
                           const SizedBox(height: 10),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(10),
-                            onTap: () => _showPeriodTransactionsSheet(context, startDate, endDate, rangeLabel),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.receipt_long_rounded, size: 14, color: AppColors.primary),
-                                  SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(
-                                      'Browse all transactions in this period',
-                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary),
-                                      overflow: TextOverflow.ellipsis,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () => _showPeriodTransactionsSheet(context, startDate, endDate, rangeLabel),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.receipt_long_rounded, size: 14, color: AppColors.primary),
+                                        SizedBox(width: 5),
+                                        Flexible(
+                                          child: Text(
+                                            'Transactions',
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  SizedBox(width: 4),
-                                  Icon(Icons.chevron_right_rounded, size: 14, color: AppColors.primary),
-                                ],
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () => _showSmartInsightsSheet(
+                                    context,
+                                    startDate: startDate,
+                                    endDate: endDate,
+                                    prevStartDate: prevStartDate,
+                                    prevEndDate: prevEndDate,
+                                    rangeLabel: rangeLabel,
+                                  ),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.auto_awesome_rounded, size: 14, color: Color(0xFF8B5CF6)),
+                                        SizedBox(width: 5),
+                                        Flexible(
+                                          child: Text(
+                                            'Insights Radar',
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF8B5CF6)),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -908,17 +1073,6 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> with SingleTi
                   ],
                 );
               },
-            ),
-
-            const SizedBox(height: 14),
-
-            // Smart Financial Insights & Anomaly Radar
-            SmartInsightsCard.live(
-              startDate: startDate,
-              endDate: endDate,
-              prevStartDate: prevStartDate,
-              prevEndDate: prevEndDate,
-              currentPeriod: _currentPeriod,
             ),
 
             const SizedBox(height: 16),

@@ -159,6 +159,148 @@ class AccountRepository {
     }
     return balance;
   }
+
+  /// Watch detailed account financial stats including current month flow, all-time flow, and % share of Net Worth
+  Stream<List<AccountFinancialStats>> watchAccountsFinancialStats() {
+    late StreamController<List<AccountFinancialStats>> controller;
+    StreamSubscription? sub1;
+    StreamSubscription? sub2;
+
+    Future<void> emitStats() async {
+      if (controller.isClosed) return;
+      try {
+        final accountsList = await getAllAccounts();
+        final now = DateTime.now();
+        final startOfMonth = DateTime(now.year, now.month, 1);
+        final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+
+        // Fetch all transactions for this profile
+        final allTxs = await (_db.select(_db.transactions)
+              ..where((tbl) => tbl.profileId.equals(profileId)))
+            .get();
+
+        final rawStats = <AccountFinancialStats>[];
+        double totalPositiveBalances = 0.0;
+
+        for (final acc in accountsList) {
+          double balance = acc.initialBalance;
+          double monthInc = 0.0;
+          double monthExp = 0.0;
+          double totalInc = 0.0;
+          double totalExp = 0.0;
+          int txCount = 0;
+
+          for (final tx in allTxs) {
+            final isSource = tx.accountId == acc.id;
+            final isDest = tx.toAccountId == acc.id;
+            if (!isSource && !isDest) continue;
+
+            txCount++;
+
+            if (tx.type == 'income' && isSource) {
+              balance += tx.amount;
+              totalInc += tx.amount;
+              if ((tx.date.isAfter(startOfMonth) || tx.date.isAtSameMomentAs(startOfMonth)) &&
+                  (tx.date.isBefore(endOfMonth) || tx.date.isAtSameMomentAs(endOfMonth))) {
+                monthInc += tx.amount;
+              }
+            } else if (tx.type == 'expense' && isSource) {
+              balance -= tx.amount;
+              totalExp += tx.amount;
+              if ((tx.date.isAfter(startOfMonth) || tx.date.isAtSameMomentAs(startOfMonth)) &&
+                  (tx.date.isBefore(endOfMonth) || tx.date.isAtSameMomentAs(endOfMonth))) {
+                monthExp += tx.amount;
+              }
+            } else if (tx.type == 'transfer') {
+              if (isSource) {
+                balance -= tx.amount;
+              }
+              if (isDest) {
+                balance += tx.amount;
+              }
+            }
+          }
+
+          if (balance > 0) {
+            totalPositiveBalances += balance;
+          }
+
+          rawStats.add(AccountFinancialStats(
+            account: acc,
+            currentBalance: balance,
+            monthIncome: monthInc,
+            monthExpense: monthExp,
+            allTimeIncome: totalInc,
+            allTimeExpense: totalExp,
+            shareOfNetWorth: 0.0,
+            transactionCount: txCount,
+          ));
+        }
+
+        // Calculate share of Net Worth and sort by balance descending
+        final results = rawStats.map((stat) {
+          final share = (totalPositiveBalances > 0 && stat.currentBalance > 0)
+              ? (stat.currentBalance / totalPositiveBalances) * 100
+              : 0.0;
+          return AccountFinancialStats(
+            account: stat.account,
+            currentBalance: stat.currentBalance,
+            monthIncome: stat.monthIncome,
+            monthExpense: stat.monthExpense,
+            allTimeIncome: stat.allTimeIncome,
+            allTimeExpense: stat.allTimeExpense,
+            shareOfNetWorth: share,
+            transactionCount: stat.transactionCount,
+          );
+        }).toList()
+          ..sort((a, b) => b.currentBalance.compareTo(a.currentBalance));
+
+        if (!controller.isClosed) {
+          controller.add(results);
+        }
+      } catch (e, st) {
+        if (!controller.isClosed) {
+          controller.addError(e, st);
+        }
+      }
+    }
+
+    controller = StreamController<List<AccountFinancialStats>>(
+      onListen: () {
+        emitStats();
+        sub1 = watchAllAccounts().listen((_) => emitStats());
+        sub2 = _db.select(_db.transactions).watch().listen((_) => emitStats());
+      },
+      onCancel: () async {
+        await sub1?.cancel();
+        await sub2?.cancel();
+      },
+    );
+
+    return controller.stream;
+  }
+}
+
+class AccountFinancialStats {
+  final Account account;
+  final double currentBalance;
+  final double monthIncome;
+  final double monthExpense;
+  final double allTimeIncome;
+  final double allTimeExpense;
+  final double shareOfNetWorth;
+  final int transactionCount;
+
+  AccountFinancialStats({
+    required this.account,
+    required this.currentBalance,
+    required this.monthIncome,
+    required this.monthExpense,
+    required this.allTimeIncome,
+    required this.allTimeExpense,
+    required this.shareOfNetWorth,
+    required this.transactionCount,
+  });
 }
 
 final accountRepositoryProvider = Provider<AccountRepository>((ref) {
@@ -173,4 +315,8 @@ final accountsStreamProvider = StreamProvider<List<Account>>((ref) {
 
 final accountsWithBalancesStreamProvider = StreamProvider<List<AccountWithBalance>>((ref) {
   return ref.watch(accountRepositoryProvider).watchAccountsWithBalances();
+});
+
+final accountsFinancialStatsStreamProvider = StreamProvider<List<AccountFinancialStats>>((ref) {
+  return ref.watch(accountRepositoryProvider).watchAccountsFinancialStats();
 });
