@@ -34,6 +34,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["appLabel"] = "Lumina Expense"
     }
 
     signingConfigs {
@@ -59,6 +60,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Separate dev package so it installs alongside the Play Store app
+            applicationIdSuffix = ".dev"
+            manifestPlaceholders["appLabel"] = "Lumina Dev"
+        }
         release {
             val keystoreFile = file("release.keystore")
             val hasKeystore = keystorePropertiesFile.exists() || keystoreFile.exists()

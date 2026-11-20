@@ -211,18 +211,11 @@ class AppUpdateService {
             ],
           ),
           content: const Text(
-            'Google Play In-App Updates are active for app versions downloaded via Google Play Store (including Closed Testing).\n\nIf you are running a sideloaded APK or debug build, you can check for latest releases on Google Play or GitHub.',
+            'Could not check for updates right now. Please visit Lumina Expense on Google Play to get the latest version.',
             style: TextStyle(fontSize: 14),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
-            OutlinedButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                _launchUrl('https://github.com/PrabinCode/lumina-expense/releases');
-              },
-              child: const Text('GitHub'),
-            ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
               onPressed: () {
@@ -245,7 +238,7 @@ class AppUpdateService {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('Platform Update Notice'),
           content: const Text(
-            'In-App updates via Google Play Core are supported on Android devices. You can check GitHub for desktop releases.',
+            'In-app updates are only available on Android devices.',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),

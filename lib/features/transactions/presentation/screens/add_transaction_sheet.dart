@@ -895,6 +895,8 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     final isSplitMatched = (remainingSplit.abs() <= 0.01);
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
     final isKeyboardOpen = keyboardInset > 0;
+    // Landscape / split-screen: too short for a docked keypad, so scroll the whole sheet
+    final isShortScreen = MediaQuery.sizeOf(context).height < 600;
 
     // Auto-select first category if none selected
     categoriesAsync.whenData((categories) {
@@ -916,7 +918,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
             color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          child: Column(
+          child: _ScrollIfShort(
+            enabled: isShortScreen,
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               // Header handle + Type Switcher Tabs + Amount Display (Swipeable)
@@ -1042,6 +1046,7 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
 
               // Middle Scrollable Form Content (Smooth scroll with auto-fit, swipeable)
               Flexible(
+                flex: isShortScreen ? 0 : 1,
                 child: GestureDetector(
                   behavior: HitTestBehavior.translucent,
                   onHorizontalDragEnd: _handleHorizontalSwipe,
@@ -1615,8 +1620,22 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
               ),
             ],
           ),
+          ),
         ),
       ),
     );
+  }
+}
+
+/// Wraps [child] in a scroll view only when [enabled] (short screens).
+class _ScrollIfShort extends StatelessWidget {
+  final bool enabled;
+  final Widget child;
+
+  const _ScrollIfShort({required this.enabled, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return enabled ? SingleChildScrollView(child: child) : child;
   }
 }

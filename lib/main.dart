@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -24,6 +25,7 @@ import 'features/subscriptions/data/subscription_repository.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  _lockPhonesToPortrait();
   AppLogService.initialize();
   QuickShortcutService.initialize();
   runApp(
@@ -31,6 +33,18 @@ void main() {
       child: LuminaExpenseApp(),
     ),
   );
+}
+
+/// Phones stay portrait; tablets/foldables (shortest side >= 600dp) may rotate.
+/// Android 16+ ignores orientation locks on large screens anyway.
+void _lockPhonesToPortrait() {
+  final views = WidgetsBinding.instance.platformDispatcher.views;
+  if (views.isNotEmpty) {
+    final view = views.first;
+    final shortestSide = view.physicalSize.shortestSide / view.devicePixelRatio;
+    if (shortestSide >= 600) return;
+  }
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 }
 
 class LuminaExpenseApp extends ConsumerWidget {
@@ -243,9 +257,14 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      // Keep content clear of side system bars / cutouts in landscape
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: IndexedStack(
+          index: _currentIndex,
+          children: _screens,
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openAddTransaction(context),
