@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/providers/currency_provider.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/gesture_demo_card.dart';
 import '../../../../main.dart';
 
 /// Interactive multi-slide onboarding walkthrough & initial setup screen.
@@ -130,7 +131,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 children: [
                   _buildPrivacySlide(isDark),
                   _buildTrackingSlide(isDark),
-                  _buildAnalyticsSlide(isDark),
+                  _buildGesturesSlide(isDark),
                   _buildSetupSlide(isDark),
                 ],
               ),
@@ -381,18 +382,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Widget _buildTrackingSlide(bool isDark) {
     return _SlideLayout(
       isDark: isDark,
-      badgeText: 'EFFORTLESS MANAGEMENT',
+      badgeText: 'TRACK & UNDERSTAND',
       badgeIcon: Icons.track_changes_rounded,
       badgeColor: AppColors.secondary,
       heroWidget: _buildTrackingHeroCard(isDark),
-      title: 'Smart Tracking\n& Category Budgets',
+      title: 'Track Every Expense,\nSee Where It Goes',
       subtitle:
-          'Effortlessly track daily expenses, set category spending caps, and avoid overspending with real-time budget status alerts.',
+          'Log expenses in seconds, set category budgets, and get clear charts and a health score that show how you are really doing.',
       highlights: const [
-        '⚡ Quick-Add Multi-Account Transactions',
+        '⚡ Quick-Add with Calculator Keypad & Receipt Scan',
         '📊 Category Budgets with Smart Warning Alerts',
-        '🔄 Auto Recurring Subscriptions & Bill Catch-Up',
-        '💳 Multi-Wallet & Cash Accounts Overview',
+        '🔄 Recurring Subscriptions, Debts & Savings Goals',
+        '📈 Cash Flow Charts, Health Score & CSV Exports',
       ],
     );
   }
@@ -490,88 +491,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 isDark: isDark,
               ),
               _buildMiniChip(
-                icon: Icons.subscriptions_outlined,
-                label: 'Subscriptions Active',
-                color: AppColors.secondary,
-                isDark: isDark,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── Slide 3: Visual Analytics & Insights ────────────────────
-  Widget _buildAnalyticsSlide(bool isDark) {
-    return _SlideLayout(
-      isDark: isDark,
-      badgeText: 'DEEP INSIGHTS & REPORTS',
-      badgeIcon: Icons.auto_graph_rounded,
-      badgeColor: AppColors.transfer,
-      heroWidget: _buildAnalyticsHeroCard(isDark),
-      title: 'Insightful Analytics\n& Cash Flow Trends',
-      subtitle:
-          'Gain complete clarity on where your money flows with visual breakdown charts, financial health checks, and exportable reports.',
-      highlights: const [
-        '📈 Interactive Cash Flow & Spending Charts',
-        '🏷️ Top Spending Categories & Trend Analysis',
-        '🏆 Financial Health & Savings Rate Scoring',
-        '📄 Instant CSV & Device Report Exports',
-      ],
-    );
-  }
-
-  Widget _buildAnalyticsHeroCard(bool isDark) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isDark
-              ? [
-                  AppColors.transfer.withValues(alpha: 0.25),
-                  const Color(0xFF0F172A),
-                ]
-              : [
-                  AppColors.transfer.withValues(alpha: 0.15),
-                  Colors.white,
-                ],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: AppColors.transfer.withValues(alpha: isDark ? 0.35 : 0.25),
-          width: 1.5,
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              _buildBar(height: 50, color: AppColors.income, label: 'Income'),
-              _buildBar(height: 75, color: AppColors.expense, label: 'Expense'),
-              _buildBar(height: 90, color: AppColors.transfer, label: 'Savings'),
-              _buildBar(height: 60, color: AppColors.warning, label: 'Invest'),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildMiniChip(
                 icon: Icons.favorite_rounded,
                 label: 'Health Score: 88%',
-                color: AppColors.income,
-                isDark: isDark,
-              ),
-              _buildMiniChip(
-                icon: Icons.file_download_outlined,
-                label: 'CSV & PDF Ready',
                 color: AppColors.transfer,
                 isDark: isDark,
               ),
@@ -582,34 +503,22 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     );
   }
 
-  Widget _buildBar({
-    required double height,
-    required Color color,
-    required String label,
-  }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 22,
-          height: height,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(6),
-            boxShadow: [
-              BoxShadow(
-                color: color.withValues(alpha: 0.3),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
-        ),
+  // ─── Slide 3: Quick Gestures ─────────────────────────────────
+  Widget _buildGesturesSlide(bool isDark) {
+    return _SlideLayout(
+      isDark: isDark,
+      badgeText: 'QUICK GESTURES',
+      badgeIcon: Icons.swipe_rounded,
+      badgeColor: AppColors.warning,
+      heroWidget: const GestureDemoCard(),
+      title: 'Swipe, Tap\n& Long-Press',
+      subtitle:
+          'Manage transactions without opening menus. Try dragging the sample row above. Nothing is saved.',
+      highlights: const [
+        '👉 Swipe right on a transaction to edit it',
+        '👈 Swipe left to move it to the Recycle Bin (with undo)',
+        '✋ Long-press to select several at once',
+        '🧭 More tips anytime in Settings › App Tour & Guide',
       ],
     );
   }

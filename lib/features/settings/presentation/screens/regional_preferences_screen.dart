@@ -19,7 +19,7 @@ class RegionalPreferencesScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Regional & Formatting'),
+        title: const Text('App Preferences'),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -191,6 +191,30 @@ class RegionalPreferencesScreen extends ConsumerWidget {
                     value: prefs.ocrAutoCategory,
                     activeTrackColor: AppColors.primary,
                     onChanged: (val) => notifier.setOcrAutoCategory(val),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              // ─── Section 4: Gestures & Behavior ───
+              _buildSectionHeader('Gestures & Behavior', Icons.swipe_rounded),
+              const SizedBox(height: 10),
+
+              _buildGroupedCard(
+                isDark: isDark,
+                children: [
+                  SwitchListTile.adaptive(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    secondary: _buildLeadingIcon(Icons.swipe_left_rounded, AppColors.warning),
+                    title: const Text('Confirm Before Swipe Delete', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    subtitle: const Text(
+                      'Ask before moving swiped transactions, budgets & debts to the Recycle Bin',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    value: prefs.confirmSwipeDelete,
+                    activeTrackColor: AppColors.primary,
+                    onChanged: (val) => notifier.setConfirmSwipeDelete(val),
                   ),
                 ],
               ),

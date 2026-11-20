@@ -13,6 +13,7 @@ import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../data/transaction_repository.dart';
 import '../screens/add_transaction_sheet.dart';
 import 'transaction_detail_sheet.dart';
+import '../../../../core/widgets/swipe_delete_confirm_dialog.dart';
 
 class InteractiveTransactionTile extends ConsumerWidget {
   final TransactionWithDetails item;
@@ -119,7 +120,12 @@ class InteractiveTransactionTile extends ConsumerWidget {
           onEdited?.call();
           return false;
         }
-        return true;
+        return confirmSwipeDelete(
+          context,
+          ref,
+          itemName: tx.title,
+          detail: '$prefix${CurrencyFormatter.format(tx.amount, mask: isMasked)}',
+        );
       },
       onDismissed: (direction) async {
         if (direction == DismissDirection.endToStart) {

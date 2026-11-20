@@ -16,6 +16,7 @@ import '../../../transactions/presentation/screens/add_transaction_sheet.dart';
 import '../../../transactions/presentation/widgets/power_search_bar.dart';
 import '../../../transactions/presentation/widgets/transaction_batch_action_bar.dart';
 import '../../../transactions/presentation/widgets/transaction_detail_sheet.dart';
+import '../../../../core/widgets/swipe_delete_confirm_dialog.dart';
 
 class RecentTransactionsList extends ConsumerStatefulWidget {
   const RecentTransactionsList({super.key});
@@ -262,7 +263,12 @@ class _RecentTransactionsListState extends ConsumerState<RecentTransactionsList>
                           );
                           return false;
                         }
-                        return true;
+                        return confirmSwipeDelete(
+                          context,
+                          ref,
+                          itemName: tx.title,
+                          detail: '$prefix${CurrencyFormatter.format(tx.amount, mask: isMasked)}',
+                        );
                       },
                       onDismissed: (direction) async {
                         if (direction == DismissDirection.endToStart) {

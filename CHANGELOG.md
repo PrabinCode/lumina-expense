@@ -10,6 +10,40 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Fixed` - for any bug fixes.
 - `Other` - for technical and release chores.
 
+## [v1.12.0] - 2026-11-20
+### Added
+- **Swipe-to-Delete Confirmation** (based on user feedback):
+  - Swiping left on a transaction, budget or debt now asks "Move to Recycle Bin?" before deleting, showing the item name and amount (amounts stay hidden when the privacy mask is on).
+  - "Don't ask me again" checkbox turns the confirmation off; a toast explains where to turn it back on.
+  - Applies to Home recent transactions, Analytics transaction lists, Budgets and Debts. Right-swipe to edit and the UNDO toast are unchanged.
+- **Quick Gestures Onboarding Slide**:
+  - New animated demo of a sample transaction row showing swipe right (Edit), swipe left (Trash) and long-press (Select), with live captions. Users can drag the row themselves; nothing is saved.
+- **App Tour & Guide**:
+  - Settings › App Tour & Guide now opens a browsable guide with 8 expandable topics: Quick Gestures (with live demo), Adding Transactions, Receipts & Scanning, Budgets/Goals/Debts, Analytics & Health Score, Backup & Recycle Bin, Security & Privacy, and Where Settings Live.
+  - Each topic has "Go there" shortcuts to the relevant screen, plus a "Replay Welcome Tour" button.
+- **Separate debug build** (`com.prabincode.luminaexpense.dev`, "Lumina Dev") so test builds install alongside the Play Store app.
+
+### Changed
+- **Onboarding stays at 4 slides**: Tracking and Analytics slides merged into a single "Track & Understand" slide to make room for Quick Gestures.
+- **"Regional & Formatting Preferences" renamed to "App Preferences"**, with a new Gestures & Behavior section containing the swipe-delete confirmation toggle.
+- **Update checks are Google Play only**: removed the GitHub releases link from the update dialog to comply with Google Play's Device and Network Abuse policy.
+
+### Improved
+- **Android 15/16 readiness**:
+  - Edge-to-edge display enabled on all Android versions.
+  - Phones stay portrait while tablets and foldables can rotate (Android 16 large-screen requirements); removed the fixed portrait lock on the crop screen.
+  - Add Transaction sheet scrolls on short or landscape screens; main navigation respects side system bars and cutouts.
+- **Smaller release builds** via R8 optimized resource shrinking.
+
+### Fixed
+- **Subscriptions & Bills row overflow**: long account names no longer overflow the card (`RIGHT OVERFLOWED BY 5.0 PIXELS`); the account and frequency line now truncates with an ellipsis.
+
+### Other
+- Updated onboarding widget test for the new slide order.
+- Store screenshot capture test is now opt-in (`--dart-define=CAPTURE_SCREENSHOTS=true`) so regular test runs and CI no longer rewrite PNGs.
+
+---
+
 ## [v1.11.0] - 2026-10-07
 ### Added
 - **Total Net Worth & Multi-Wallet Financial Breakdown Sheet**:

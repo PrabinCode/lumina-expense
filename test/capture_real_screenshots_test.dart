@@ -113,5 +113,10 @@ void main() {
     await captureScreen(const Scaffold(body: SettingsScreen()), 'screenshot_settings');
 
     await testDb.close();
-  });
+    // Writes PNGs to disk, and the seeded data is date-relative, so every run creates new
+    // image diffs. Only runs when requested:
+    //   flutter test test/capture_real_screenshots_test.dart --dart-define=CAPTURE_SCREENSHOTS=true
+  }, skip: !_captureScreenshots);
 }
+
+const _captureScreenshots = bool.fromEnvironment('CAPTURE_SCREENSHOTS');

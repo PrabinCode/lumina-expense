@@ -14,6 +14,7 @@ import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../../categories/data/category_repository.dart';
 import '../../../transactions/data/transaction_repository.dart';
 import '../../data/budget_repository.dart';
+import '../../../../core/widgets/swipe_delete_confirm_dialog.dart';
 
 class BudgetsScreen extends ConsumerStatefulWidget {
   const BudgetsScreen({super.key});
@@ -454,6 +455,11 @@ class _BudgetsScreenState extends ConsumerState<BudgetsScreen> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: const Icon(Icons.delete_outline, color: Colors.white),
+                          ),
+                          confirmDismiss: (_) => confirmSwipeDelete(
+                            context,
+                            ref,
+                            itemName: '${cat.name} budget',
                           ),
                           onDismissed: (_) async {
                             final recycleRepo = ref.read(recycleBinRepositoryProvider);

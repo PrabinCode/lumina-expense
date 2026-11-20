@@ -390,11 +390,15 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> with 
                     const SizedBox(height: 3),
                     Row(
                       children: [
-                        Text(
-                          '${item.account.name} • ${sub.frequency[0].toUpperCase()}${sub.frequency.substring(1)}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        Flexible(
+                          child: Text(
+                            '${item.account.name} • ${sub.frequency[0].toUpperCase()}${sub.frequency.substring(1)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            ),
                           ),
                         ),
                         if (sub.autoLog) ...[
@@ -434,6 +438,7 @@ class _SubscriptionsScreenState extends ConsumerState<SubscriptionsScreen> with 
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(Icons.check_rounded, size: 13, color: AppColors.primary),
                                 SizedBox(width: 4),

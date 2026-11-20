@@ -54,21 +54,24 @@ void main() {
     expect(find.text('Next'), findsOneWidget);
     expect(find.text('Skip'), findsOneWidget);
 
-    // Tap Next -> Slide 2: Smart Budgeting
+    // Tap Next -> Slide 2: Track & Understand
     await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
 
-    expect(find.text('EFFORTLESS MANAGEMENT'), findsOneWidget);
-    expect(find.text('Smart Tracking\n& Category Budgets'), findsOneWidget);
+    expect(find.text('TRACK & UNDERSTAND'), findsOneWidget);
+    expect(find.text('Track Every Expense,\nSee Where It Goes'), findsOneWidget);
 
-    // Tap Next -> Slide 3: Analytics
+    // Tap Next -> Slide 3: Quick Gestures
+    // The gesture demo loops forever, so pump fixed durations instead of pumpAndSettle.
     await tester.tap(find.text('Next'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.text('DEEP INSIGHTS & REPORTS'), findsOneWidget);
-    expect(find.text('Insightful Analytics\n& Cash Flow Trends'), findsOneWidget);
+    expect(find.text('QUICK GESTURES'), findsOneWidget);
+    expect(find.text('Swipe, Tap\n& Long-Press'), findsOneWidget);
+    expect(find.text('Morning Coffee'), findsOneWidget);
 
-    // Tap Next -> Slide 4: Setup & Personalize
+    // Tap Next -> Slide 4: Setup & Personalize (demo is disposed once off-screen)
     await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
 

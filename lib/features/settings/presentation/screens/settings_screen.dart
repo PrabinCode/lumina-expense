@@ -25,7 +25,7 @@ import '../../../profile/providers/profile_providers.dart';
 import '../../../subscriptions/presentation/screens/subscriptions_screen.dart';
 import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../../recycle_bin/presentation/screens/recycle_bin_screen.dart';
-import '../../../onboarding/presentation/screens/onboarding_screen.dart';
+import 'app_guide_screen.dart';
 import 'feedback_report_sheet.dart';
 import 'regional_preferences_screen.dart';
 import 'storage_maintenance_screen.dart';
@@ -396,9 +396,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 8),
 
               _SettingsNavTile(
-                title: 'Regional & Formatting Preferences',
-                subtitle: 'Date, time, currency grouping & receipt OCR',
-                icon: Icons.language_rounded,
+                title: 'App Preferences',
+                subtitle: 'Formatting, receipt OCR & swipe gestures',
+                icon: Icons.tune_rounded,
                 iconColor: const Color(0xFF6366F1),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegionalPreferencesScreen())),
               ),
@@ -573,6 +573,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 8),
 
+
               _SettingsNavTile(
                 title: 'Storage & Maintenance',
                 subtitle: 'SQLite VACUUM, integrity validation & cache cleaner',
@@ -674,12 +675,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // App Tour & Walkthrough button inside About
+                    // App Tour & Guide button inside About
                     InkWell(
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const OnboardingScreen(isViewingOnly: true),
+                          builder: (_) => const AppGuideScreen(),
                         ),
                       ),
                       borderRadius: BorderRadius.circular(12),
@@ -699,11 +700,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'App Tour & Walkthrough',
+                                    'App Tour & Guide',
                                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
                                   ),
                                   Text(
-                                    'Explore key features and guided visual overview',
+                                    'Gestures, tips & where to find every feature',
                                     style: TextStyle(fontSize: 11, color: Colors.grey),
                                   ),
                                 ],

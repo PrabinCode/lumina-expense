@@ -11,6 +11,7 @@ import '../../../../core/utils/currency_formatter.dart';
 import '../../../../core/widgets/sonner_toast.dart';
 import '../../../recycle_bin/data/recycle_bin_repository.dart';
 import '../../data/debt_repository.dart';
+import '../../../../core/widgets/swipe_delete_confirm_dialog.dart';
 
 class DebtsScreen extends ConsumerStatefulWidget {
   const DebtsScreen({super.key});
@@ -233,6 +234,12 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: const Icon(Icons.delete_outline, color: Colors.white),
+                      ),
+                      confirmDismiss: (_) => confirmSwipeDelete(
+                        context,
+                        ref,
+                        itemName: debt.personName,
+                        detail: '${isLent ? 'Lent' : 'Borrowed'} ${CurrencyFormatter.format(debt.amount)}',
                       ),
                       onDismissed: (_) async {
                         final recycleRepo = ref.read(recycleBinRepositoryProvider);

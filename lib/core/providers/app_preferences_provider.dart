@@ -82,6 +82,7 @@ class AppPreferencesState {
   final OcrDateFormatStrategy ocrDateFormat;
   final bool ocrScanNotes;
   final bool ocrAutoCategory;
+  final bool confirmSwipeDelete;
 
   const AppPreferencesState({
     required this.dateFormat,
@@ -93,6 +94,7 @@ class AppPreferencesState {
     required this.ocrDateFormat,
     required this.ocrScanNotes,
     required this.ocrAutoCategory,
+    this.confirmSwipeDelete = true,
   });
 
   AppPreferencesState copyWith({
@@ -105,6 +107,7 @@ class AppPreferencesState {
     OcrDateFormatStrategy? ocrDateFormat,
     bool? ocrScanNotes,
     bool? ocrAutoCategory,
+    bool? confirmSwipeDelete,
   }) {
     return AppPreferencesState(
       dateFormat: dateFormat ?? this.dateFormat,
@@ -116,6 +119,7 @@ class AppPreferencesState {
       ocrDateFormat: ocrDateFormat ?? this.ocrDateFormat,
       ocrScanNotes: ocrScanNotes ?? this.ocrScanNotes,
       ocrAutoCategory: ocrAutoCategory ?? this.ocrAutoCategory,
+      confirmSwipeDelete: confirmSwipeDelete ?? this.confirmSwipeDelete,
     );
   }
 }
@@ -130,6 +134,7 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferencesState> {
   static const _keyOcrDateFormat = 'pref_ocr_date_format';
   static const _keyOcrScanNotes = 'pref_ocr_scan_notes';
   static const _keyOcrAutoCategory = 'pref_ocr_auto_category';
+  static const _keyConfirmSwipeDelete = 'pref_confirm_swipe_delete';
 
   AppPreferencesNotifier()
       : super(const AppPreferencesState(
@@ -215,6 +220,9 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferencesState> {
       // OCR Auto Category
       final ocrAutoCategory = prefs.getBool(_keyOcrAutoCategory) ?? true;
 
+      // Confirm before swipe-to-delete
+      final confirmSwipeDelete = prefs.getBool(_keyConfirmSwipeDelete) ?? true;
+
       state = AppPreferencesState(
         dateFormat: dateFormat,
         timeFormat: timeFormat,
@@ -225,6 +233,7 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferencesState> {
         ocrDateFormat: ocrDateFormat,
         ocrScanNotes: ocrScanNotes,
         ocrAutoCategory: ocrAutoCategory,
+        confirmSwipeDelete: confirmSwipeDelete,
       );
 
       _syncWithFormatters(state);
@@ -299,6 +308,12 @@ class AppPreferencesNotifier extends StateNotifier<AppPreferencesState> {
     state = state.copyWith(ocrAutoCategory: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyOcrAutoCategory, value);
+  }
+
+  Future<void> setConfirmSwipeDelete(bool value) async {
+    state = state.copyWith(confirmSwipeDelete: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyConfirmSwipeDelete, value);
   }
 }
 
