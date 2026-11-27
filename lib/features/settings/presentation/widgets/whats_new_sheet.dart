@@ -29,34 +29,34 @@ class WhatsNewSheet extends ConsumerWidget {
 
     final features = [
       (
-        icon: Icons.health_and_safety_rounded,
+        icon: Icons.edit_note_rounded,
         color: const Color(0xFF10B981),
-        title: '5-Pillar Financial Health Engine',
-        description: 'Transparent mathematical benchmarks for Savings Discipline (30%), Budget Adherence (25%), Debt Freedom (20%), Cash Flow Momentum (15%), and Spending Stability (10%).',
+        title: 'No More Lost Drafts',
+        description: 'Adding a transaction or writing feedback? Pressing Back or tapping outside now asks before discarding what you entered. Edits only prompt if you actually changed something.',
       ),
       (
-        icon: Icons.trending_up_rounded,
-        color: const Color(0xFF6366F1),
-        title: "'Level Up Your Score' Roadmap",
-        description: 'Gamified financial action roadmap with estimated point gains (+25 pts) and 1-tap navigation to Budgets, IOUs, Goals, and Transactions.',
-      ),
-      (
-        icon: Icons.grid_view_rounded,
-        color: const Color(0xFFF59E0B),
-        title: '2x2 Interactive Metric Grids',
-        description: 'Deep dive into every health pillar with authentic currency amounts, 3-month rolling burn rates, debt-to-income ratios, and targeted advice.',
-      ),
-      (
-        icon: Icons.star_rounded,
+        icon: Icons.vertical_align_bottom_rounded,
         color: const Color(0xFF3B82F6),
-        title: 'Closed Testing Telemetry & In-App Reviews',
-        description: '14-day Play Store closed testing progress tracker, automatic update detection, and milestone-triggered rating prompts.',
+        title: 'Buttons Stay Above the Nav Bar',
+        description: 'Feedback, Analytics, Budgets, Recycle Bin, Theme and Net Worth sheets keep their bottom buttons fully visible on edge-to-edge phones.',
       ),
       (
-        icon: Icons.subscriptions_rounded,
+        icon: Icons.delete_sweep_rounded,
+        color: const Color(0xFFEF4444),
+        title: 'Swipe-to-Delete Confirmation',
+        description: 'Swiping left asks "Move to Recycle Bin?" first. Tick "Don\'t ask me again" to keep instant delete; change it anytime in App Preferences.',
+      ),
+      (
+        icon: Icons.swipe_rounded,
+        color: const Color(0xFFF59E0B),
+        title: 'Quick Gestures & App Tour',
+        description: 'A new animated onboarding slide shows swipe and long-press gestures, and Settings › App Tour & Guide explains every feature with "Go there" shortcuts.',
+      ),
+      (
+        icon: Icons.phone_android_rounded,
         color: const Color(0xFF8B5CF6),
-        title: 'Subscriptions & Bills UI Polish',
-        description: 'Consistent top-right AppBar action for adding subscriptions and safe area bottom clearance preventing navigation overlap.',
+        title: 'Ready for Android 15 & 16',
+        description: 'Edge-to-edge display, rotation on tablets and foldables, and smaller, faster release builds.',
       ),
     ];
 

@@ -138,6 +138,9 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     } else {
       _type = widget.initialType;
     }
+    if (_isEditMode) {
+      _initialSignature = _formSignature();
+    }
   }
 
   @override
@@ -863,8 +866,79 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
     );
   }
 
+  /// Snapshot of the user-editable fields, used to detect edits in edit mode.
+  String _formSignature() => [
+        _type,
+        _amountStr.trim(),
+        _titleController.text.trim(),
+        _noteController.text.trim(),
+        _tags.join(','),
+        _receiptPath ?? '',
+        _selectedCategoryId ?? '',
+        _selectedAccountId ?? '',
+        _selectedToAccountId ?? '',
+        _selectedDate.toIso8601String(),
+        _isSplitMode,
+      ].join('|');
+
+  String? _initialSignature;
+
+  bool get _hasUnsavedChanges {
+    if (_isEditMode) {
+      return _initialSignature != null && _formSignature() != _initialSignature;
+    }
+    return _amountStr.trim() != '0' ||
+        _titleController.text.trim().isNotEmpty ||
+        _noteController.text.trim().isNotEmpty ||
+        _tags.isNotEmpty ||
+        _receiptPath != null;
+  }
+
+  /// Back button / tap outside the sheet. Saving pops via Navigator.pop,
+  /// which bypasses this, so no prompt after a successful save.
+  Future<void> _handlePopAttempt(bool didPop, Object? result) async {
+    if (didPop) return;
+    final navigator = Navigator.of(context);
+    if (!_hasUnsavedChanges) {
+      navigator.pop();
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_isEditMode ? 'Discard changes?' : 'Discard transaction?'),
+        content: Text(_isEditMode
+            ? 'Your edits to this transaction haven\'t been saved.'
+            : 'This transaction hasn\'t been saved. If you close now, what you entered will be lost.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep Editing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.expense),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) {
+      navigator.pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: _handlePopAttempt,
+      child: _buildSheet(context),
+    );
+  }
+
+  Widget _buildSheet(BuildContext context) {
     ref.watch(currencyProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final accountsAsync = ref.watch(accountsStreamProvider);

@@ -47,7 +47,7 @@ class NetWorthBreakdownSheet extends ConsumerWidget {
             final totalMonthExpense = stats.fold<double>(0.0, (s, a) => s + a.monthExpense);
 
             return Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + MediaQuery.paddingOf(context).bottom),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

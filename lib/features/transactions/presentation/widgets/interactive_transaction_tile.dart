@@ -111,6 +111,7 @@ class InteractiveTransactionTile extends ConsumerWidget {
             isScrollControlled: true,
             useSafeArea: true,
             backgroundColor: Colors.transparent,
+            enableDrag: false, // drag-dismiss skips the unsaved-changes prompt
             builder: (_) => AddTransactionSheet(
               initialType: tx.type,
               transactionToEdit: tx,

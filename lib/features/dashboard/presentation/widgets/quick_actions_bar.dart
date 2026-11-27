@@ -12,6 +12,7 @@ class QuickActionsBar extends StatelessWidget {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
+      enableDrag: false, // drag-dismiss skips the unsaved-changes prompt
       builder: (context) => AddTransactionSheet(
         initialType: initialType,
         autoOpenScanner: autoOpenScanner,

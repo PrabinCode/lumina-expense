@@ -10,6 +10,22 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Fixed` - for any bug fixes.
 - `Other` - for technical and release chores.
 
+## [v1.12.1] - 2026-11-27
+### Fixed
+- **Feedback & Bug Report sheet** (based on user feedback):
+  - The "Share Log File" and "Send" buttons no longer slide under the system navigation bar after the keyboard closes.
+  - Tapping outside the sheet, pressing Back or tapping the new close (X) button now asks "Discard feedback?" when a message, email or screenshot has been entered, instead of silently losing it.
+- **Add / Edit Transaction sheet**:
+  - Back or tapping outside now asks "Discard transaction?" when an amount, title, note, tag or receipt has been entered.
+  - When editing, "Discard changes?" appears only if something was actually changed. Saving still closes the sheet straight away.
+  - Swipe-down-to-close is disabled on both sheets so unsaved input can't be lost by an accidental drag.
+- **Bottom sheets and the navigation bar**: 8 more sheets now keep their last row above the system navigation bar on edge-to-edge devices (Analytics drill-downs, Budget details, Recycle Bin item details, batch Assign Category/Account, Theme selection, Net Worth breakdown).
+
+### Changed
+- **What's New in Lumina** (Settings › About & Support) now shows the v1.12 highlights.
+
+---
+
 ## [v1.12.0] - 2026-11-20
 ### Added
 - **Swipe-to-Delete Confirmation** (based on user feedback):

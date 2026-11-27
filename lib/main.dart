@@ -250,6 +250,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
+      enableDrag: false, // drag-dismiss skips the unsaved-changes prompt
       builder: (context) => const AddTransactionSheet(initialType: 'expense'),
     );
   }

@@ -39,6 +39,7 @@ class QuickShortcutService {
         isScrollControlled: true,
         useSafeArea: true,
         backgroundColor: Colors.transparent,
+        enableDrag: false, // drag-dismiss skips the unsaved-changes prompt
         builder: (_) => const AddTransactionSheet(initialType: 'expense'),
       );
     } else if (uri.contains('add_income')) {
@@ -47,6 +48,7 @@ class QuickShortcutService {
         isScrollControlled: true,
         useSafeArea: true,
         backgroundColor: Colors.transparent,
+        enableDrag: false, // drag-dismiss skips the unsaved-changes prompt
         builder: (_) => const AddTransactionSheet(initialType: 'income'),
       );
     } else if (uri.contains('health_score') || uri.contains('health')) {

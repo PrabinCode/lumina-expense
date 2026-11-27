@@ -36,6 +36,7 @@ class FinancialHealthScreen extends ConsumerWidget {
           isScrollControlled: true,
           useSafeArea: true,
           backgroundColor: Colors.transparent,
+          enableDrag: false, // drag-dismiss skips the unsaved-changes prompt
           builder: (_) => const AddTransactionSheet(),
         );
         break;
